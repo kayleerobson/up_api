@@ -186,19 +186,6 @@
     </div>
 
     <div class="grid2">
-      <div class="card" id="in-out">
-        <div class="card-head"><div><h3>Money in and out by month</h3><p class="note">Click a month to focus the page on it. Moves between your own accounts are left out.</p></div></div>
-        <div class="legend"><span><i class="sw" style="background:var(--navy)"></i>Money in</span><span><i class="sw" style="background:var(--peach)"></i>Money out</span></div>
-        <div class="chart" id="trend"></div>
-      </div>
-      <div class="card" id="where">
-        <div class="card-head"><div><h3>Where the money went</h3><p class="note"><span id="catPeriod">All months</span>, by Up category. Click a bar to filter the tables below.</p></div></div>
-        <div class="chart" id="catbars"></div>
-      </div>
-    </div>
-
-
-    <div class="grid2">
       <div class="card" id="subcats">
         <div class="card-head"><div><h3>Spending breakdown</h3><p class="note" id="pieNote">Money out by Up subcategory. The biggest get their own slice; smaller ones are grouped by category in grey. Transfers show who they went to. Click a slice or a name for the breakdown.</p>
           <div class="seg" role="group" aria-label="Show the chart by"><button type="button" class="seg-b" data-pie="category" aria-pressed="false">Category</button><button type="button" class="seg-b" data-pie="sub" aria-pressed="true">Subcategory</button></div></div><button class="btn ghost csv" type="button" data-csv="subcats">Download CSV</button></div>
@@ -447,9 +434,8 @@
     const cr = catRows();
         const lede = $("lede"); lede.replaceChildren((ov.account ? ov.account + ", " : "Joint accounts, ") + (ov.month ? mfmt(ov.month, true) : "all months") + ": ", el("b", { textContent: money(moneyIn) }), " came in and ", el("b", { textContent: money(outAll) }), " went out.",
       cr.length ? " The biggest outgoing category" + (ov.who ? " for " + ov.who : "") + " was " : "", cr.length ? el("b", { textContent: cr[0].category }) : "", cr.length ? "." : "");
-    $("catPeriod").textContent = (ov.month ? mfmt(ov.month, true) : "All months") + (ov.who ? ", spent by " + ov.who : "");
 
-    drawTrend(); drawCats(cr); drawBalance(); drawFlow();
+    drawBalance(); drawFlow();
     drawSubPie(); if (drawer.open) drawer.refresh();
     tableRows($("peopleBody"), peopleRows(), [{ f: (r) => r.person }, { n: 1, f: (r) => r.count }, { n: 1, key: "amount", f: (r) => money(r.amount) }],
       { bar: "amount", color: C.peach, click: (r) => openPerson(r.person) });
@@ -1006,7 +992,7 @@
   $("sendBtn").addEventListener("click", () => send().catch(showDbError));
   $("clearStaged").addEventListener("click", () => Promise.all([unstage(Object.values(changes).filter((c) => c.status === "staged").map((c) => c.txId)), ...Object.values(tagChanges).filter((c) => c.status === "staged").map((c) => db.doc("tagChanges/" + c.txId).delete())]).catch(showDbError));
   for (const b of document.querySelectorAll("[data-csv]")) { b.hidden = true; b.addEventListener("click", () => downloadCSV(b.dataset.csv, b)); }
-  let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (!$("view-overview").hidden) { drawTrend(); drawCats(catRows()); drawBalance(); drawFlow(); } }, 150); });
+  let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (!$("view-overview").hidden) { drawBalance(); drawFlow(); } }, 150); });
 
   async function boot() {
     try {
