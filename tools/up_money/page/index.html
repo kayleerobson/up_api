@@ -1,0 +1,1039 @@
+<title>2Up Money</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,600&family=Fraunces:opsz,wght@9..144,600&display=swap">
+<style>
+  /* Kaylee Brand, dashboard palette (navy + peach), exact brand tokens. Light only, by the brand's rule.
+     Layout: header, sticky sync bar, three tabs (Overview / Needs a category / All transactions). */
+  :root {
+    --surface: #FBF8F5; --raised: #FFFFFF; --ink: #2B2A2E; --muted: #5F5C63; --hairline: #E6DFD8;
+    --navy: #1F3A5F; --navy-tint: #E8EDF4; --peach: #F2A07B; --peach-deep: #A64B25;
+    --positive: #2F7D5B; --negative: #B23A3A;
+    --serif: "Fraunces", Georgia, "Times New Roman", serif;
+    --sans: "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --r-sm: 4px; --r-md: 8px;
+    color-scheme: light;
+  }
+  body { background: var(--surface); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 24px; }
+  body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); }
+  .wrap { max-width: 1280px; margin-inline: auto; padding-block: 40px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 24px; }
+  h1, h2, h3 { margin: 0; text-wrap: balance; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 30px; line-height: 36px; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 22px; line-height: 28px; }
+  h3 { font-family: var(--sans); font-weight: 600; font-size: 17px; line-height: 24px; }
+  p { margin: 0; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; line-height: 20px; }
+  .label { font-size: 12px; line-height: 16px; font-weight: 600; color: var(--muted); }
+  .num { font-variant-numeric: tabular-nums; }
+  a { color: var(--navy); }
+  .head { display: grid; gap: 8px; }
+  .head p { max-width: 70ch; }
+  .lede b { font-weight: 600; color: var(--ink); }
+
+  .sync { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--raised); border: 1px solid var(--hairline); border-radius: var(--r-md); padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: center; justify-content: space-between; }
+  .sync .count { font-weight: 600; }
+  .sync-msg { flex: 1 1 18rem; min-width: 0; }
+  .btn { font: inherit; font-size: 13px; font-weight: 600; line-height: 20px; border-radius: var(--r-sm); padding: 6px 14px; cursor: pointer; border: 1px solid var(--navy); background: var(--navy); color: var(--raised); white-space: nowrap; }
+  .btn.ghost { background: var(--raised); color: var(--navy); }
+  .btn.csv { padding: 2px 10px; font-size: 12px; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn:focus-visible, select:focus-visible, input:focus-visible, .tab:focus-visible, .link:focus-visible, .chip:focus-visible, tr.click:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+  .status-bad { color: var(--negative); }
+  .link { font: inherit; font-size: 13px; background: none; border: 0; padding: 0; color: var(--muted); text-decoration: underline; cursor: pointer; }
+  .chip { font: inherit; font-size: 12px; font-weight: 600; line-height: 18px; border-radius: 999px; border: 1px solid var(--navy); color: var(--navy); background: var(--navy-tint); padding: 3px 10px; cursor: pointer; }
+
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--hairline); flex-wrap: wrap; }
+  .tab { font: inherit; font-weight: 600; font-size: 15px; background: none; border: 0; border-bottom: 2px solid transparent; padding: 8px 12px; color: var(--muted); cursor: pointer; margin-bottom: -1px; }
+  .tab[aria-selected="true"] { color: var(--navy); border-bottom-color: var(--navy); }
+  .tab .pill { margin-left: 6px; }
+
+  .stack { display: grid; gap: 24px; }
+  .card { background: var(--raised); border: 1px solid var(--hairline); border-radius: var(--r-md); padding: 16px; display: grid; gap: 12px; min-width: 0; align-content: start; }
+  .card-head { display: flex; gap: 8px 16px; justify-content: space-between; align-items: start; flex-wrap: wrap; }
+  .card-head > div { display: grid; gap: 4px; min-width: 0; flex: 1 1 16rem; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr)); gap: 16px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11.5rem), 1fr)); gap: 16px; }
+  .tile { background: var(--raised); border: 1px solid var(--hairline); border-radius: var(--r-md); padding: 16px; display: grid; gap: 4px; align-content: start; }
+  .stat { font-weight: 600; font-size: 36px; line-height: 40px; color: var(--navy); font-variant-numeric: tabular-nums; }
+  .stat.good { color: var(--positive); } .stat.bad { color: var(--negative); }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; }
+  .field { display: grid; gap: 4px; min-width: 0; }
+  select, input[type="search"], input[type="date"], input[type="number"] { font: inherit; font-size: 13px; line-height: 20px; color: var(--ink); background: var(--raised); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 5px 8px; max-width: 100%; }
+  input[type="number"] { width: 7rem; }
+  input[type="search"] { width: 16rem; }
+
+  .chart { position: relative; min-height: 240px; }
+  .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .chart text { font-family: var(--sans); font-size: 12px; fill: var(--muted); }
+  .chart .lbl { fill: var(--ink); }
+  .chart .hit { cursor: pointer; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+  .legend span { display: inline-flex; gap: 6px; align-items: center; }
+  .sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  .tip { position: absolute; pointer-events: none; background: var(--raised); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 6px 10px; font-size: 12px; line-height: 18px; white-space: nowrap; z-index: 3; }
+  .tip .t { color: var(--muted); }
+
+  .tablebox { overflow: auto; max-height: 70vh; border: 1px solid var(--hairline); border-radius: var(--r-sm); }
+  .tablebox.short { max-height: 26rem; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 20px; }
+  th { position: sticky; top: 0; z-index: 1; background: var(--navy-tint); color: var(--ink); text-align: left; font-size: 12px; font-weight: 600; padding: 6px 8px; white-space: nowrap; border-bottom: 1px solid var(--hairline); }
+  td { padding: 6px 8px; border-bottom: 1px solid var(--hairline); vertical-align: top; }
+  td.n, th.n { text-align: right; white-space: nowrap; }
+  tr.click { cursor: pointer; }
+  tr.click:hover td { background: var(--surface); }
+  tr.dim td { opacity: .45; }
+  tr.staged td { background: var(--surface); box-shadow: inset 3px 0 0 var(--peach); }
+  tr.pending td { background: var(--navy-tint); }
+  td select { max-width: 15rem; }
+  .desc { font-weight: 600; }
+  .cellbar { display: block; height: 4px; border-radius: 2px; margin-top: 3px; margin-left: auto; }
+  .pill { display: inline-block; border-radius: 999px; padding: 0 8px; font-size: 12px; line-height: 18px; border: 1px solid var(--hairline); color: var(--muted); white-space: nowrap; }
+  .pill.staged { border-color: var(--peach); color: var(--peach-deep); }
+  .pill.pending { border-color: var(--navy); color: var(--navy); }
+  .pill.applied { border-color: var(--positive); color: var(--positive); }
+  .pill.failed { border-color: var(--negative); color: var(--negative); }
+  .in { color: var(--positive); }
+  .undo { font: inherit; font-size: 12px; background: none; border: 0; color: var(--muted); text-decoration: underline; cursor: pointer; padding: 0 0 0 6px; }
+  .tagchip { display: inline-flex; align-items: center; gap: 2px; border-radius: 999px; padding: 0 8px; margin: 0 4px 2px 0; font-size: 12px; line-height: 18px; background: var(--navy-tint); color: var(--navy); white-space: nowrap; }
+  select.tagpick { font-size: 12px; padding: 2px 6px; margin-top: 2px; max-width: 11rem; }
+  .tagchip.new { background: var(--raised); border: 1px solid var(--peach); color: var(--peach-deep); }
+  .tagchip button { font: inherit; background: none; border: 0; padding: 0 0 0 2px; color: inherit; cursor: pointer; }
+  .modal-back { position: fixed; inset: 0; z-index: 20; background: rgba(43, 42, 46, .35); display: flex; align-items: center; justify-content: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+  .modal { background: var(--raised); border: 1px solid var(--hairline); border-radius: var(--r-md); padding: 20px; width: min(26rem, 100%); display: grid; gap: 12px; }
+  .modal input[type="text"] { font: inherit; font-size: 15px; color: var(--ink); background: var(--raised); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 6px 10px; width: 100%; box-sizing: border-box; }
+  .modal .row { display: flex; gap: 8px; justify-content: flex-end; }
+  .seg { display: inline-flex; border: 1px solid var(--hairline); border-radius: var(--r-sm); overflow: hidden; width: max-content; margin-top: 4px; }
+  .seg-b { font: inherit; font-size: 12px; font-weight: 600; line-height: 18px; padding: 3px 12px; background: var(--raised); color: var(--muted); border: 0; cursor: pointer; }
+  .seg-b + .seg-b { border-left: 1px solid var(--hairline); }
+  .seg-b[aria-pressed="true"] { background: var(--navy); color: var(--raised); }
+  .seg-b:focus-visible { outline: 2px solid var(--navy); outline-offset: -2px; }
+  .pie-wrap { display: grid; grid-template-columns: minmax(10rem, 15rem) minmax(0, 1fr); gap: 16px; align-items: center; }
+  @media (max-width: 520px) { .pie-wrap { grid-template-columns: 1fr; } .pie { max-width: 15rem; margin-inline: auto; } }
+  .pie { position: relative; width: 100%; }
+  .pie svg { display: block; width: 100%; height: auto; }
+  .pie path { cursor: pointer; stroke: var(--raised); stroke-width: 2; }
+  .pie path:hover, .pie path.on { opacity: .85; }
+  .pie .centre { font-family: var(--sans); fill: var(--ink); }
+  .pie-legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 13px; line-height: 20px; min-width: 0; }
+  .pie-legend button { font: inherit; width: 100%; display: grid; grid-template-columns: 12px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; text-align: left; background: none; border: 0; border-radius: var(--r-sm); padding: 3px 6px; cursor: pointer; color: var(--ink); }
+  .pie-legend button:hover, .pie-legend button.on { background: var(--surface); }
+  .pie-legend button:focus-visible, .drawer button:focus-visible { outline: 2px solid var(--navy); outline-offset: 1px; }
+  .pie-legend .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pie-legend .pc { color: var(--muted); }
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 15; width: min(30rem, 100%); background: var(--raised); border-left: 1px solid var(--hairline); display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 12px;
+    padding: calc(16px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) 16px; }
+  .drawer-head { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
+  .drawer .tablebox { max-height: none; }
+  .x { font: inherit; font-size: 20px; line-height: 20px; background: none; border: 0; color: var(--muted); cursor: pointer; padding: 4px; }
+  .crumb { font: inherit; font-size: 13px; background: none; border: 0; padding: 0; color: var(--navy); text-decoration: underline; cursor: pointer; }
+  .empty { padding: 24px; text-align: center; color: var(--muted); }
+  .note { font-size: 13px; line-height: 20px; color: var(--muted); max-width: 80ch; }
+  @media (max-width: 640px) { input[type="search"] { width: 100%; } .hide-sm { display: none; } .stat { font-size: 30px; line-height: 36px; } }
+</style>
+
+<div class="wrap">
+  <header class="head">
+    <h1>2Up Money</h1>
+    <p class="lede muted" id="lede">Your joint Up accounts and savers: where the money comes from, where it goes, and who spent it.</p>
+  </header>
+
+  <div class="sync" role="region" aria-label="Category changes waiting to send">
+    <div class="sync-msg">
+      <p><span class="count num" id="stagedCount">0 changes</span> <span class="muted">to categories and tags ready to send to Up.</span></p>
+      <p class="small muted" id="syncNote">Pick a category or tag. Nothing changes in Up until you press Send to Up.</p>
+    </div>
+    <div class="bar">
+      <button class="btn ghost" id="clearStaged" type="button">Clear unsent</button>
+      <button class="btn" id="sendBtn" type="button">Send to Up</button>
+    </div>
+  </div>
+
+  <div class="tabs" role="tablist" aria-label="Views">
+    <button class="tab" role="tab" id="tab-overview" data-view="overview" aria-controls="view-overview" aria-selected="true" type="button">Overview</button>
+    <button class="tab" role="tab" id="tab-needs" data-view="needs" aria-controls="view-needs" aria-selected="false" type="button">Needs a category <span class="pill num" id="needsBadge">0</span></button>
+    <button class="tab" role="tab" id="tab-transactions" data-view="transactions" aria-controls="view-transactions" aria-selected="false" type="button">All transactions</button>
+  </div>
+
+  <!-- ================= OVERVIEW ================= -->
+  <section id="view-overview" role="tabpanel" aria-labelledby="tab-overview" class="stack">
+    <div class="bar">
+      <div class="field"><label class="label" for="oMonth">Month</label><select id="oMonth"></select></div>
+      <div class="field"><label class="label" for="oAccount">Account</label><select id="oAccount"></select></div>
+      <div class="field"><label class="label" for="oWho">Spent by</label><select id="oWho"></select></div>
+      <button class="chip" id="oCatChip" type="button" hidden></button>
+      <button class="link" id="oReset" type="button">Reset filters</button>
+    </div>
+
+    <div class="tiles" aria-label="Totals">
+      <div class="tile"><p class="label">Money in</p><span class="stat" id="tIn">—</span><p class="small muted">Pay, top-ups and refunds</p></div>
+      <div class="tile"><p class="label">Money out</p><span class="stat" id="tOut">—</span><p class="small muted" id="tOutNote">Everything spent or sent</p></div>
+      <div class="tile"><p class="label">Net</p><span class="stat" id="tNet">—</span><p class="small muted">Money in minus money out</p></div>
+      <div class="tile"><p class="label">Transfers to people</p><span class="stat" id="tTr">—</span><p class="small muted"><span id="tTrN">0</span> payments and transfers</p></div>
+      <div class="tile"><p class="label">Balance today</p><span class="stat" id="tBal">—</span><p class="small muted" id="tBalNote">All joint accounts and savers</p></div>
+    </div>
+
+    <div class="grid2">
+      <div class="card" id="balance-trend">
+        <div class="card-head"><div><h3>Balance over time</h3><p class="note">End-of-day balance of <span id="balScope">all joint accounts and savers</span>, worked back from today's balance.</p></div></div>
+        <div class="chart" id="balchart"></div>
+      </div>
+      <div class="card" id="flow-trend">
+        <div class="card-head"><div><h3>Money in and out over time</h3><p class="note"><span id="flowGrain">Weekly totals</span>. Moves between your own accounts are left out.</p></div></div>
+        <div class="legend"><span><i class="sw" style="background:var(--navy)"></i>Money in</span><span><i class="sw" style="background:var(--peach)"></i>Money out</span></div>
+        <div class="chart" id="flowchart"></div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card" id="in-out">
+        <div class="card-head"><div><h3>Money in and out by month</h3><p class="note">Click a month to focus the page on it. Moves between your own accounts are left out.</p></div></div>
+        <div class="legend"><span><i class="sw" style="background:var(--navy)"></i>Money in</span><span><i class="sw" style="background:var(--peach)"></i>Money out</span></div>
+        <div class="chart" id="trend"></div>
+      </div>
+      <div class="card" id="where">
+        <div class="card-head"><div><h3>Where the money went</h3><p class="note"><span id="catPeriod">All months</span>, by Up category. Click a bar to filter the tables below.</p></div></div>
+        <div class="chart" id="catbars"></div>
+      </div>
+    </div>
+
+
+    <div class="grid2">
+      <div class="card" id="subcats">
+        <div class="card-head"><div><h3>Spending breakdown</h3><p class="note" id="pieNote">Money out by Up subcategory. The biggest get their own slice; smaller ones are grouped by category in grey. Transfers show who they went to. Click a slice or a name for the breakdown.</p>
+          <div class="seg" role="group" aria-label="Show the chart by"><button type="button" class="seg-b" data-pie="category" aria-pressed="false">Category</button><button type="button" class="seg-b" data-pie="sub" aria-pressed="true">Subcategory</button></div></div><button class="btn ghost csv" type="button" data-csv="subcats">Download CSV</button></div>
+        <div class="pie-wrap"><div class="pie" id="subPie"></div><ul class="pie-legend" id="subLegend"></ul></div>
+      </div>
+      <div class="card" id="people">
+        <div class="card-head"><div><h3>Transfers to people</h3><p class="note">Payments and transfers out that have no Up category. Click a row to see its transactions.</p></div><button class="btn ghost csv" type="button" data-csv="people">Download CSV</button></div>
+        <div class="tablebox short"><table><thead><tr><th>To</th><th class="n">Count</th><th class="n">Amount</th></tr></thead><tbody id="peopleBody"></tbody></table></div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card" id="income">
+        <div class="card-head"><div><h3>Money in by source</h3><p class="note">Pay, top-ups, refunds and interest.</p></div><button class="btn ghost csv" type="button" data-csv="income">Download CSV</button></div>
+        <div class="tablebox short"><table><thead><tr><th>Source</th><th class="n">Count</th><th class="n">Amount</th></tr></thead><tbody id="incomeBody"></tbody></table></div>
+      </div>
+      <div class="card" id="balances">
+        <div class="card-head"><div><h3>Account balances</h3><p class="note">Balances when the data was last pulled from Up.</p></div><button class="btn ghost csv" type="button" data-csv="balances">Download CSV</button></div>
+        <div class="tablebox short"><table><thead><tr><th>Account</th><th>Type</th><th class="n">Balance</th></tr></thead><tbody id="balBody"></tbody></table></div>
+      </div>
+    </div>
+
+    <p class="note">Covers your joint Up accounts and savers from the start of 2Up Spending's history. Money in and out leave out moves between your own joint accounts; money to or from Kaylee's personal Spending account counts as in or out. Spent by comes from Up: $jaiwt is Jai's Up name and $kayleerobson1 is Kaylee's, so transfers to $jaiwt go to Jai's personal Up account. Category changes you make here show in these figures straight away.</p>
+  </section>
+
+  <!-- ================= NEEDS A CATEGORY ================= -->
+  <section id="view-needs" role="tabpanel" aria-labelledby="tab-needs" class="card" hidden>
+    <div class="card-head">
+      <div><h2>Needs a category</h2>
+      <p class="note">Transactions Up lets you categorise that have no category yet. Tick several and set a category or add a tag in one go, or use the dropdown on each row. Transfers between Up accounts can't be categorised in Up, so they aren't listed.</p></div>
+      <button class="btn ghost csv" type="button" data-csv="needs">Download CSV</button>
+    </div>
+    <div class="bar">
+      <div class="field"><label class="label" for="needsDir">Show</label>
+        <select id="needsDir"><option value="out">Money out</option><option value="in">Money in</option><option value="all">Both</option></select></div>
+      <div class="field"><label class="label" for="needsWho">Spent by</label><select id="needsWho"></select></div>
+      <div class="field"><label class="label" for="needsQ">Search</label><input id="needsQ" type="search" placeholder="Description or reference"></div>
+      <div class="field"><label class="label" for="bulkCat">Set ticked to</label><select id="bulkCat"></select></div>
+      <button class="btn ghost" id="bulkApply" type="button" disabled>Set category</button>
+      <div class="field"><label class="label" for="bulkTag">Tag ticked with</label><select id="bulkTag"></select></div>
+      <button class="btn ghost" id="bulkTagApply" type="button" disabled>Add tag</button>
+    </div>
+    <div class="tablebox">
+      <table>
+        <thead><tr>
+          <th><input type="checkbox" id="checkAll" aria-label="Tick all shown"></th>
+          <th>Date</th><th>Spent by</th><th>Description</th><th class="hide-sm">Reference</th><th class="hide-sm">Type</th><th class="n">Amount</th><th>Category</th><th>Tags</th><th>Status</th>
+        </tr></thead>
+        <tbody id="needsBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= ALL TRANSACTIONS ================= -->
+  <section id="view-transactions" role="tabpanel" aria-labelledby="tab-transactions" class="card" hidden>
+    <div class="card-head">
+      <div><h2>All transactions</h2>
+      <p class="note">Every transaction in your joint accounts and savers. Change a category with the dropdown on any row Up allows; it joins the changes waiting to send.</p></div>
+      <button class="btn ghost csv" type="button" data-csv="transactions">Download CSV</button>
+    </div>
+    <div class="bar">
+      <div class="field"><label class="label" for="fWho">Spent by</label><select id="fWho"></select></div>
+      <div class="field"><label class="label" for="fParent">Category</label><select id="fParent"></select></div>
+      <div class="field"><label class="label" for="fSub">Subcategory</label><select id="fSub"></select></div>
+      <div class="field"><label class="label" for="fAccount">Account</label><select id="fAccount"></select></div>
+      <div class="field"><label class="label" for="fTag">Tag</label><select id="fTag"></select></div>
+      <div class="field"><label class="label" for="fDir">Direction</label><select id="fDir"><option value="">In and out</option><option value="out">Money out</option><option value="in">Money in</option></select></div>
+      <div class="field"><label class="label" for="fFrom">From</label><input id="fFrom" type="date"></div>
+      <div class="field"><label class="label" for="fTo">To</label><input id="fTo" type="date"></div>
+      <div class="field"><label class="label" for="fMin">Min $</label><input id="fMin" type="number" min="0" step="1" inputmode="decimal"></div>
+      <div class="field"><label class="label" for="fMax">Max $</label><input id="fMax" type="number" min="0" step="1" inputmode="decimal"></div>
+      <div class="field"><label class="label" for="fQ">Search</label><input id="fQ" type="search" placeholder="Where, reference, person"></div>
+      <button class="btn ghost" id="fReset" type="button">Reset</button>
+    </div>
+    <p class="small muted"><span class="num" id="allCount">0</span> transactions, net <span class="num" id="allSum">$0.00</span> (money out <span class="num" id="allOut">$0.00</span>, money in <span class="num" id="allIn">$0.00</span>).</p>
+    <div class="tablebox">
+      <table>
+        <thead><tr>
+          <th>Date</th><th>Account</th><th>Spent by</th><th>Where / who</th><th class="hide-sm">Reference</th><th class="hide-sm">How</th><th class="n">Amount</th><th>Category</th><th>Subcategory</th><th>Tags</th><th>Change</th>
+        </tr></thead>
+        <tbody id="allBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <aside class="drawer" id="drawer" hidden aria-labelledby="drawerTitle">
+    <div class="drawer-head"><div><p class="label" id="drawerKicker">Breakdown</p><h2 id="drawerTitle">—</h2><p class="small muted" id="drawerSub"></p></div><button class="x" type="button" id="drawerClose" aria-label="Close breakdown">×</button></div>
+    <div class="bar"><button class="crumb" type="button" id="drawerBack" hidden>Back</button><button class="btn ghost csv" type="button" id="drawerCsv">Download CSV</button></div>
+    <div class="tablebox"><table><thead id="drawerHead"></thead><tbody id="drawerBody"></tbody></table></div>
+  </aside>
+
+  <p class="note">Data pulled from Up on <span id="dataDate">—</span>. Categories you send are applied in Up first, then this page's data is refreshed.</p>
+</div>
+
+<script>
+(() => {
+  const APPLY_TASK = "trig_017ZMqsTDUngZ1bFwjbiTW2Z"; // scheduled task that applies queued changes (also runs hourly)
+  const C = { navy: "#1F3A5F", peach: "#F2A07B", muted: "#5F5C63", hairline: "#E6DFD8" };
+  const money = (v, dp = 2) => (v < 0 ? "−" : "") + "$" + Math.abs(v).toLocaleString("en-AU", { minimumFractionDigits: dp, maximumFractionDigits: dp });
+  const dfmt = (d) => new Date(d + "T00:00:00").toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "2-digit" });
+  const mfmt = (m, long) => new Date(m + "-01T00:00:00").toLocaleDateString("en-AU", long ? { month: "long", year: "numeric" } : { month: "short" });
+  const r2 = (v) => Math.round(v * 100) / 100;
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, props = {}, kids = []) => { const e = document.createElement(tag); Object.assign(e, props); for (const k of kids) if (k !== null && k !== "") e.append(k); return e; };
+  const svgEl = (tag, attrs = {}) => { const e = document.createElementNS("http://www.w3.org/2000/svg", tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); return e; };
+
+  let tx = [], cats = [], subIndex = {}, balances = [], changes = {}, db = null, canWrite = false, mcp = null, downloads = null;
+  const checked = new Set();
+  let upTags = [], newTags = {}, tagChanges = {};
+  const MAX_TAGS = 6;
+  const tagList = () => [...new Set([...upTags, ...Object.values(newTags).map((x) => x.name)])].sort((a, b) => a.localeCompare(b));
+  const pendingAdds = (t) => { const c = tagChanges[t.id]; return c && c.status !== "failed" && c.status !== "applied" ? c.add || [] : []; };
+  const allTags = (t) => [...new Set([...(t.tags || []), ...pendingAdds(t)])];
+  const tagDocId = (name) => name.toLowerCase().replace(/[^a-z0-9_\-.~:@+]/g, "_").slice(0, 150) || "tag";
+  const ov = { month: "", who: "", cat: "", account: "" };
+
+  // ---------- Classification ----------
+  const eff = (t) => {
+    const c = changes[t.id];
+    if (c && c.status !== "failed") return c.to && subIndex[c.to] ? { id: c.to, name: subIndex[c.to].name, parent: subIndex[c.to].parentName } : { id: "", name: "", parent: "" };
+    return { id: t.categoryId, name: t.upCategory, parent: t.upParent };
+  };
+  // Who a transfer went to. $jaiwt is Jai's personal Up account; Jai's two saved payee names are one person.
+  const payee = (d) => /\$jaiwt/i.test(d) ? "Jai's Up" : /^J(ai)? Wynbergen Titoko$/i.test(d.trim()) ? "Jai Wynbergen Titoko" : d.replace(/^Transfer to /i, "").trim();
+  // flow: In / Out / Internal; category + sub as shown in the overview
+  const classify = (t) => {
+    if (t.internal) return { flow: "Internal", category: "Between your accounts", sub: t.description };
+    const e = eff(t);
+    if (t.amount >= 0) return { flow: "In", category: e.name ? e.parent : "Money in", sub: e.name || (t.type === "Salary" ? "Salary: " + t.description : ["Osko Payment Received", "Payment", "Transfer"].includes(t.type) ? t.description : t.type) };
+    if (e.name) return { flow: "Out", category: e.parent || e.name, sub: e.name };
+    if (t.type === "Transfer" || t.type === "Payment") { const to = payee(t.description); return { flow: "Out", category: "Transfers", sub: "Transfer - " + to, to }; }
+    return { flow: "Out", category: "Uncategorised", sub: t.type };
+  };
+  const label = (t) => { const k = classify(t); return [k.category, k.flow === "Out" || k.category !== "Money in" ? (k.category === "Uncategorised" || k.category === "Between your accounts" ? "" : k.sub) : ""]; };
+
+  // ---------- CSV ----------
+  const csvCell = (v) => { const s = v === null || v === undefined ? "" : String(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const toCSV = (head, rows) => [head, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
+  const stamp = () => (ov.month || "all-months") + (ov.account ? "-" + ov.account.toLowerCase().replace(/\s+/g, "-") : "") + (ov.who ? "-" + ov.who.toLowerCase().replace(/\s+/g, "-") : "");
+  const csvBuilders = {
+    _spenders: () => ["2up-who-spent-" + stamp(), ["Spent by", "Card purchases", "Card spend", "Payments and transfers", "Total out"], spenderRows().map((r) => [r.who, r.cardCount, r.card.toFixed(2), r.other.toFixed(2), r.total.toFixed(2)])],
+    subcats: () => pieMode === "category" ? ["2up-categories-" + stamp(), ["Category", "Count", "Amount"], catRows().map((r) => [r.category, r.count, r.amount.toFixed(2)])] : ["2up-subcategories-" + stamp(), ["Category", "Subcategory", "Count", "Amount"], subRows().map((r) => [r.category, r.sub, r.count, r.amount.toFixed(2)])],
+    people: () => ["2up-transfers-to-people-" + stamp(), ["To", "Count", "Amount"], peopleRows().map((r) => [r.person, r.count, r.amount.toFixed(2)])],
+    income: () => ["2up-money-in-" + (ov.month || "all-months"), ["Source", "Count", "Amount"], incomeRows().map((r) => [r.source, r.count, r.amount.toFixed(2)])],
+    balances: () => ["2up-balances", ["Account", "Type", "Balance"], balances.map((b) => [b.account, b.kind, Number(b.balance).toFixed(2)])],
+    needs: () => ["2up-needs-a-category", ["Date", "Account", "Spent by", "Description", "Reference", "Type", "Amount", "Tags", "Pending change"], needsRows().map((t) => [t.date, t.account, t.spentBy, t.description, t.reference, t.type, t.amount.toFixed(2), allTags(t).join("; "), changes[t.id] ? (changes[t.id].to ? subIndex[changes[t.id].to]?.name : "Remove category") + " (" + changes[t.id].status + ")" : ""])],
+    transactions: () => ["2up-transactions", ["Date", "Time", "Account", "Spent by", "Description", "Reference", "Type", "Card method", "Amount", "Category", "Subcategory", "Tags", "Status", "Transfer account", "Foreign amount", "Transaction id"],
+      allRows().map((t) => { const [p, s] = label(t); return [t.date, t.time, t.account, t.spentBy, t.description, t.reference, t.type, t.cardMethod, t.amount.toFixed(2), p, s, allTags(t).join("; "), t.status, t.transferAccount, t.foreign, t.id]; })],
+  };
+  async function downloadCSV(key, btn) {
+    if (!downloads) return;
+    const [name, head, rows] = csvBuilders[key]();
+    const old = btn.textContent;
+    try { await downloads.save({ filename: name + ".csv", data: toCSV(head, rows) }); }
+    catch (e) {
+      if (e && e.code === "declined") return;
+      btn.textContent = e && e.code === "rate_limited" ? "Try again in a moment" : "Download unavailable";
+      setTimeout(() => { btn.textContent = old; }, 3000);
+    }
+  }
+
+  // ---------- Overview data ----------
+  const inMonth = (t) => (!ov.month || t.month === ov.month) && (!ov.account || t.account === ov.account);
+  // With one account picked, moves to and from your other accounts count as money in or out for it.
+  const cls = (t) => (t.internal && ov.account ? { flow: t.amount >= 0 ? "In" : "Out", category: "Between your accounts", sub: t.description } : classify(t));
+  const outRows = () => tx.filter((t) => inMonth(t) && (!ov.who || t.spentBy === ov.who)).map((t) => ({ t, k: cls(t) })).filter((x) => x.k.flow === "Out");
+  const group = (items, keyFn, init, add) => { const m = new Map(); for (const x of items) { const k = keyFn(x); const r = m.get(k) || init(x); add(r, x); m.set(k, r); } return [...m.values()]; };
+  function spenderRows() {
+    return group(tx.filter(inMonth).map((t) => ({ t, k: cls(t) })).filter((x) => x.k.flow === "Out"), (x) => x.t.spentBy,
+      (x) => ({ who: x.t.spentBy, card: 0, cardCount: 0, other: 0, total: 0 }),
+      (r, x) => { const a = -x.t.amount; if (x.t.method === "Card") { r.card += a; r.cardCount++; } else r.other += a; r.total += a; })
+      .map((r) => ({ ...r, card: r2(r.card), other: r2(r.other), total: r2(r.total) })).sort((a, b) => b.total - a.total);
+  }
+  function catRows() {
+    return group(outRows(), (x) => x.k.category, (x) => ({ category: x.k.category, amount: 0, count: 0 }), (r, x) => { r.amount -= x.t.amount; r.count++; })
+      .map((r) => ({ ...r, amount: r2(r.amount) })).sort((a, b) => b.amount - a.amount);
+  }
+  function subRows() {
+    return group(outRows().filter((x) => !ov.cat || x.k.category === ov.cat), (x) => x.k.category + "|" + x.k.sub, (x) => ({ category: x.k.category, sub: x.k.sub, amount: 0, count: 0 }), (r, x) => { r.amount -= x.t.amount; r.count++; })
+      .map((r) => ({ ...r, amount: r2(r.amount) })).sort((a, b) => b.amount - a.amount);
+  }
+  function peopleRows() {
+    return group(outRows().filter((x) => x.k.category === "Transfers"), (x) => x.k.to, (x) => ({ person: x.k.to, amount: 0, count: 0, refs: new Set() }), (r, x) => { r.amount -= x.t.amount; r.count++; if (x.t.reference) r.refs.add(x.t.reference); })
+      .map((r) => ({ person: r.person, count: r.count, amount: r2(r.amount), references: [...r.refs].join(", ") })).sort((a, b) => b.amount - a.amount);
+  }
+  function incomeRows() {
+    return group(tx.filter(inMonth).map((t) => ({ t, k: cls(t) })).filter((x) => x.k.flow === "In"), (x) => x.k.sub, (x) => ({ source: x.k.sub, amount: 0, count: 0 }), (r, x) => { r.amount += x.t.amount; r.count++; })
+      .map((r) => ({ ...r, amount: r2(r.amount) })).sort((a, b) => b.amount - a.amount);
+  }
+  function monthly() {
+    const months = [...new Set(tx.map((t) => t.month))].sort();
+    return months.map((m) => {
+      let inn = 0, out = 0;
+      for (const t of tx) { if (t.month !== m || (ov.account && t.account !== ov.account)) continue; const k = cls(t); if (k.flow === "In") inn += t.amount; else if (k.flow === "Out" && (!ov.who || t.spentBy === ov.who)) out -= t.amount; }
+      return { month: m, moneyIn: r2(inn), moneyOut: r2(out) };
+    });
+  }
+
+  // ---------- Overview render ----------
+  const tableRows = (body, rows, cols, opts = {}) => {
+    body.replaceChildren();
+    if (!rows.length) { body.append(el("tr", {}, [el("td", { colSpan: cols.length, className: "empty", textContent: "Nothing for this selection." })])); return; }
+    const max = opts.bar ? Math.max(...rows.map((r) => r[opts.bar])) || 1 : 1;
+    for (const r of rows) {
+      const tr = el("tr");
+      for (const c of cols) {
+        const td = el("td", { className: c.n ? "n num" : "" , textContent: c.f(r) });
+        if (opts.bar && c.key === opts.bar) td.append(el("span", { className: "cellbar", style: `width:${Math.max(2, (r[c.key] / max) * 100)}%;background:${opts.color || C.navy}` }));
+        tr.append(td);
+      }
+      if (opts.click) { tr.className = "click" + (opts.dim && opts.dim(r) ? " dim" : ""); tr.tabIndex = 0; tr.addEventListener("click", () => opts.click(r)); tr.addEventListener("keydown", (e) => { if (e.key === "Enter") opts.click(r); }); }
+      body.append(tr);
+    }
+  };
+
+  function renderOverview() {
+    // filters
+    const months = [...new Set(tx.map((t) => t.month))].sort().reverse();
+    $("oMonth").replaceChildren(el("option", { value: "", textContent: "All months" }), ...months.map((m) => el("option", { value: m, textContent: mfmt(m, true) })));
+    $("oMonth").value = ov.month;
+    const whos = [...new Set(tx.map((t) => t.spentBy))].sort();
+    $("oWho").replaceChildren(el("option", { value: "", textContent: "Anyone" }), ...whos.map((w) => el("option", { value: w, textContent: w })));
+    $("oWho").value = ov.who;
+    const accs = balances.map((b) => b.account);
+    $("oAccount").replaceChildren(el("option", { value: "", textContent: "All accounts" }), ...accs.map((a) => el("option", { value: a, textContent: a })));
+    $("oAccount").value = ov.account;
+    $("oCatChip").hidden = !ov.cat; $("oCatChip").textContent = ov.cat ? ov.cat + "  ×" : "";
+    $("oCatChip").setAttribute("aria-label", "Clear category filter " + ov.cat);
+
+    // tiles
+    const sel = tx.filter(inMonth).map((t) => ({ t, k: cls(t) }));
+    const moneyIn = r2(sel.filter((x) => x.k.flow === "In").reduce((s, x) => s + x.t.amount, 0));
+    const outs = sel.filter((x) => x.k.flow === "Out");
+    const outAll = r2(-outs.reduce((s, x) => s + x.t.amount, 0));
+    const outWho = r2(-outs.filter((x) => !ov.who || x.t.spentBy === ov.who).reduce((s, x) => s + x.t.amount, 0));
+    const tr = outs.filter((x) => x.k.category === "Transfers" && (!ov.who || x.t.spentBy === ov.who));
+    const net = r2(moneyIn - outAll);
+    $("tIn").textContent = money(moneyIn, 0);
+    $("tOut").textContent = money(outWho, 0);
+    $("tOutNote").textContent = ov.who ? "Spent or sent by " + ov.who : "Everything spent or sent";
+    $("tNet").textContent = (net > 0 ? "+" : "") + money(net, 0); $("tNet").className = "stat " + (net >= 0 ? "good" : "bad");
+    $("tTr").textContent = money(r2(-tr.reduce((s, x) => s + x.t.amount, 0)), 0); $("tTrN").textContent = tr.length;
+    $("tBal").textContent = money(r2(balances.filter((b) => !ov.account || b.account === ov.account).reduce((s, b) => s + Number(b.balance), 0)));
+    $("tBalNote").textContent = ov.account ? ov.account : "All joint accounts and savers";
+    $("balScope").textContent = ov.account ? ov.account : "all joint accounts and savers";
+    const cr = catRows();
+        const lede = $("lede"); lede.replaceChildren((ov.account ? ov.account + ", " : "Joint accounts, ") + (ov.month ? mfmt(ov.month, true) : "all months") + ": ", el("b", { textContent: money(moneyIn) }), " came in and ", el("b", { textContent: money(outAll) }), " went out.",
+      cr.length ? " The biggest outgoing category" + (ov.who ? " for " + ov.who : "") + " was " : "", cr.length ? el("b", { textContent: cr[0].category }) : "", cr.length ? "." : "");
+    $("catPeriod").textContent = (ov.month ? mfmt(ov.month, true) : "All months") + (ov.who ? ", spent by " + ov.who : "");
+
+    drawTrend(); drawCats(cr); drawBalance(); drawFlow();
+    drawSubPie(); if (drawer.open) drawer.refresh();
+    tableRows($("peopleBody"), peopleRows(), [{ f: (r) => r.person }, { n: 1, f: (r) => r.count }, { n: 1, key: "amount", f: (r) => money(r.amount) }],
+      { bar: "amount", color: C.peach, click: (r) => openPerson(r.person) });
+    tableRows($("incomeBody"), incomeRows(), [{ f: (r) => r.source }, { n: 1, f: (r) => r.count }, { n: 1, key: "amount", f: (r) => money(r.amount) }], { bar: "amount" });
+    tableRows($("balBody"), balances.slice().sort((a, b) => b.balance - a.balance), [{ f: (r) => r.account }, { f: (r) => r.kind }, { n: 1, f: (r) => money(Number(r.balance)) }]);
+  }
+
+  function tipFor(box) { let t = box.querySelector(".tip"); if (!t) { t = el("div", { className: "tip" }); t.hidden = true; box.append(t); } return t; }
+  function showTip(box, tip, ev, head, lines) {
+    tip.replaceChildren(el("div", { className: "t", textContent: head }), ...lines.map(([c, txt]) => el("div", {}, [c ? el("i", { className: "sw", style: `background:${c};margin-right:6px` }) : "", txt])));
+    tip.hidden = false;
+    const b = box.getBoundingClientRect(), x = ev.clientX - b.left, y = ev.clientY - b.top;
+    tip.style.left = Math.max(0, Math.min(box.clientWidth - tip.offsetWidth, x - tip.offsetWidth / 2)) + "px";
+    tip.style.top = Math.max(0, y - tip.offsetHeight - 10) + "px";
+  }
+
+  function niceMax(v) { if (v <= 0) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))); const s = [1, 2, 2.5, 5, 10].find((m) => m * p >= v); return s * p; }
+  function drawTrend() {
+    const box = $("trend"), rows = monthly();
+    box.replaceChildren();
+    const W = Math.max(300, box.clientWidth || 600), H = 240, top = 12, bottom = 28;
+    const max = niceMax(Math.max(1, ...rows.map((r) => Math.max(r.moneyIn, r.moneyOut))));
+    const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => f * max);
+    const fmtK = (v) => "$" + (v >= 1000 ? (v / 1000).toLocaleString("en-AU", { maximumFractionDigits: 1 }) + "k" : v);
+    const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Money in and out by month" });
+    box.append(svg);
+    const probe = svgEl("text"); probe.textContent = fmtK(max); svg.append(probe); const left = probe.getComputedTextLength() + 12; probe.remove();
+    const y = (v) => H - bottom - (v / max) * (H - top - bottom);
+    for (const t of ticks) {
+      svg.append(svgEl("line", { x1: left, x2: W, y1: y(t), y2: y(t), stroke: C.hairline }));
+      const tx_ = svgEl("text", { x: left - 6, y: y(t) + 4, "text-anchor": "end" }); tx_.textContent = fmtK(t); svg.append(tx_);
+    }
+    const band = (W - left) / Math.max(1, rows.length), bw = Math.min(32, band * 0.3), gap = 4;
+    const tip = tipFor(box);
+    rows.forEach((r, i) => {
+      const cx = left + band * i + band / 2;
+      const g = svgEl("g", { class: "hit", opacity: ov.month && ov.month !== r.month ? 0.35 : 1 });
+      g.append(svgEl("rect", { x: cx - band / 2, y: top, width: band, height: H - top - bottom, fill: "transparent" }));
+      g.append(svgEl("rect", { x: cx - bw - gap / 2, y: y(r.moneyIn), width: bw, height: Math.max(0, y(0) - y(r.moneyIn)), rx: 3, fill: C.navy }));
+      g.append(svgEl("rect", { x: cx + gap / 2, y: y(r.moneyOut), width: bw, height: Math.max(0, y(0) - y(r.moneyOut)), rx: 3, fill: C.peach }));
+      const lb = svgEl("text", { x: cx, y: H - 8, "text-anchor": "middle" }); lb.textContent = mfmt(r.month); g.append(lb);
+      g.addEventListener("mousemove", (ev) => showTip(box, tip, ev, mfmt(r.month, true), [[C.navy, "In " + money(r.moneyIn)], [C.peach, "Out " + money(r.moneyOut)], [null, "Net " + (r.moneyIn - r.moneyOut > 0 ? "+" : "") + money(r2(r.moneyIn - r.moneyOut))]]));
+      g.addEventListener("mouseleave", () => { tip.hidden = true; });
+      g.addEventListener("click", () => { ov.month = ov.month === r.month ? "" : r.month; renderOverview(); });
+      svg.append(g);
+    });
+    svg.append(svgEl("line", { x1: left, x2: W, y1: y(0), y2: y(0), stroke: C.muted }));
+  }
+
+  const iso = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  const addDays = (s, n) => { const d = new Date(s + "T00:00:00"); d.setDate(d.getDate() + n); return iso(d); };
+  const monthRange = () => { if (!ov.month) return null; const [y, m] = ov.month.split("-").map(Number); return [ov.month + "-01", ov.month + "-" + String(new Date(y, m, 0).getDate()).padStart(2, "0")]; };
+
+  function balanceSeries() {
+    const scope = tx.filter((t) => !ov.account || t.account === ov.account);
+    if (!scope.length) return [];
+    const net = new Map(); for (const t of scope) net.set(t.date, (net.get(t.date) || 0) + t.amount);
+    const last = tx[0].date, first = scope.reduce((m, t) => (t.date < m ? t.date : m), last);
+    let bal = balances.filter((b) => !ov.account || b.account === ov.account).reduce((s, b) => s + Number(b.balance), 0);
+    const pts = [];
+    for (let d = last; d >= first; d = addDays(d, -1)) { pts.push({ x: d, y: r2(bal) }); bal -= net.get(d) || 0; }
+    pts.reverse();
+    const mr = monthRange();
+    return mr ? pts.filter((p) => p.x >= mr[0] && p.x <= mr[1]) : pts;
+  }
+  function flowSeries() {
+    const mr = monthRange();
+    const key = (d) => { if (mr) return d; const x = new Date(d + "T00:00:00"); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return iso(x); };
+    const m = new Map();
+    for (const t of tx) {
+      if (ov.account && t.account !== ov.account) continue;
+      if (mr && (t.date < mr[0] || t.date > mr[1])) continue;
+      const k = cls(t); if (k.flow === "Internal") continue;
+      const r = m.get(key(t.date)) || { x: key(t.date), in: 0, out: 0 };
+      if (k.flow === "In") r.in += t.amount; else if (!ov.who || t.spentBy === ov.who) r.out -= t.amount;
+      m.set(r.x, r);
+    }
+    // fill empty periods so the lines don't skip
+    const keys = [...m.keys()].sort(); if (!keys.length) return [];
+    const out = []; for (let d = keys[0]; d <= keys[keys.length - 1]; d = addDays(d, mr ? 1 : 7)) { const r = m.get(d) || { x: d, in: 0, out: 0 }; out.push({ x: d, in: r2(r.in), out: r2(r.out) }); }
+    return out;
+  }
+
+  // series: [{name, color, values: [number]}], xs: ["YYYY-MM-DD"], opts: {area, tipHead}
+  function drawLines(box, xs, series, opts = {}) {
+    box.replaceChildren();
+    if (!xs.length) { box.append(el("p", { className: "empty", textContent: "No data for this selection." })); return; }
+    const W = Math.max(300, box.clientWidth || 600), H = 240, top = 12, bottom = 28;
+    const all = series.flatMap((s) => s.values);
+    let lo = Math.min(0, ...all), hi = niceMax(Math.max(1, ...all));
+    if (lo < 0) lo = -niceMax(-lo);
+    const fmtK = (v) => (v < 0 ? "−" : "") + "$" + (Math.abs(v) >= 1000 ? (Math.abs(v) / 1000).toLocaleString("en-AU", { maximumFractionDigits: 1 }) + "k" : Math.abs(v));
+    const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": opts.label || "Chart" }); box.append(svg);
+    const probe = svgEl("text"); probe.textContent = fmtK(hi); svg.append(probe); let left = probe.getComputedTextLength(); probe.textContent = fmtK(lo); left = Math.max(left, probe.getComputedTextLength()) + 12; probe.remove();
+    const right = 8;
+    const y = (v) => H - bottom - ((v - lo) / (hi - lo || 1)) * (H - top - bottom);
+    const x = (i) => left + (xs.length === 1 ? (W - left - right) / 2 : (i / (xs.length - 1)) * (W - left - right));
+    for (let i = 0; i <= 4; i++) { const v = lo + ((hi - lo) * i) / 4; svg.append(svgEl("line", { x1: left, x2: W - right, y1: y(v), y2: y(v), stroke: C.hairline })); const t = svgEl("text", { x: left - 6, y: y(v) + 4, "text-anchor": "end" }); t.textContent = fmtK(v); svg.append(t); }
+    if (lo < 0) svg.append(svgEl("line", { x1: left, x2: W - right, y1: y(0), y2: y(0), stroke: C.muted }));
+    // x labels: about one per 90px
+    const step = Math.max(1, Math.ceil(xs.length / Math.max(2, Math.floor((W - left) / 90))));
+    xs.forEach((d, i) => { if (i % step) return; const t = svgEl("text", { x: x(i), y: H - 8, "text-anchor": i === 0 ? "start" : "middle" }); t.textContent = new Date(d + "T00:00:00").toLocaleDateString("en-AU", { day: "numeric", month: "short" }); svg.append(t); });
+    for (const s of series) {
+      const d = s.values.map((v, i) => (i ? "L" : "M") + x(i).toFixed(1) + "," + y(v).toFixed(1)).join("");
+      if (opts.area) { const gid = "g" + Math.random().toString(36).slice(2); const defs = svgEl("defs"); const lg = svgEl("linearGradient", { id: gid, x1: 0, y1: 0, x2: 0, y2: 1 });
+        [[0, .22], [.5, .08], [1, 0]].forEach(([o, a]) => lg.append(svgEl("stop", { offset: o, "stop-color": s.color, "stop-opacity": a }))); defs.append(lg); svg.append(defs);
+        svg.append(svgEl("path", { d: d + `L${x(xs.length - 1).toFixed(1)},${y(Math.max(lo, 0))}L${x(0).toFixed(1)},${y(Math.max(lo, 0))}Z`, fill: `url(#${gid})` })); }
+      svg.append(svgEl("path", { d, fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+      const li = s.values.length - 1; svg.append(svgEl("circle", { cx: x(li), cy: y(s.values[li]), r: 3.5, fill: s.color }));
+    }
+    const tip = tipFor(box), rule = svgEl("line", { y1: top, y2: H - bottom, stroke: C.muted, "stroke-dasharray": "3 3", visibility: "hidden" }); svg.append(rule);
+    const dots = series.map((s) => { const c = svgEl("circle", { r: 4, fill: s.color, visibility: "hidden" }); svg.append(c); return c; });
+    const hit = svgEl("rect", { x: left, y: top, width: W - left - right, height: H - top - bottom, fill: "transparent" }); svg.append(hit);
+    hit.addEventListener("mousemove", (ev) => {
+      const b = svg.getBoundingClientRect(), px = ((ev.clientX - b.left) / b.width) * W;
+      const i = Math.max(0, Math.min(xs.length - 1, Math.round(((px - left) / (W - left - right)) * (xs.length - 1))));
+      rule.setAttribute("x1", x(i)); rule.setAttribute("x2", x(i)); rule.setAttribute("visibility", "visible");
+      series.forEach((s, j) => { dots[j].setAttribute("cx", x(i)); dots[j].setAttribute("cy", y(s.values[i])); dots[j].setAttribute("visibility", "visible"); });
+      showTip(box, tip, ev, opts.tipHead ? opts.tipHead(xs[i]) : xs[i], series.map((s) => [series.length > 1 ? s.color : null, s.name + " " + money(s.values[i])]));
+    });
+    hit.addEventListener("mouseleave", () => { tip.hidden = true; rule.setAttribute("visibility", "hidden"); dots.forEach((c) => c.setAttribute("visibility", "hidden")); });
+  }
+  const longDate = (d) => new Date(d + "T00:00:00").toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+  function drawBalance() {
+    const pts = balanceSeries();
+    drawLines($("balchart"), pts.map((p) => p.x), [{ name: "Balance", color: C.navy, values: pts.map((p) => p.y) }], { area: true, label: "Balance over time", tipHead: longDate });
+  }
+  function drawFlow() {
+    const pts = flowSeries(), daily = !!ov.month;
+    $("flowGrain").textContent = (daily ? "Daily totals" : "Weekly totals, weeks starting Monday") + (ov.who ? "; money out is " + ov.who + "'s only" : "");
+    drawLines($("flowchart"), pts.map((p) => p.x), [{ name: "In", color: C.navy, values: pts.map((p) => p.in) }, { name: "Out", color: C.peach, values: pts.map((p) => p.out) }],
+      { label: "Money in and out over time", tipHead: (d) => (daily ? longDate(d) : "Week of " + longDate(d)) });
+  }
+
+  // ---------- Subcategory pie + breakdown drawer ----------
+  const PIE = ["#1F3A5F", "#F2A07B", "#A64B25", "#5F5C63", "#6B7F99", "#F7C6AF", "#CF9A82", "#AFADB1", "#A5B0BF", "#2B2A2E"];
+  const GREYS = ["#E6DFD8", "#D3CAC1", "#EFEAE4", "#C2B8AE", "#DCD5CE", "#B5ABA1"];
+  // Up to 10 of the biggest subcategories (each at least 2%) get their own slice. The rest are grouped by
+  // category ("Other Personal" and so on) so no single leftover slice dominates; groups under 1% are merged.
+  let pieMode = "sub";
+  function pieSlices() {
+    if (pieMode === "category") {
+      const subs = subRows(), cr = catRows().filter((r) => !ov.cat || r.category === ov.cat), tot = cr.reduce((s, r) => s + r.amount, 0);
+      if (!cr.length || tot <= 0) return { slices: [], total: 0 };
+      const colorFor = (i) => (i < PIE.length ? PIE[i] : GREYS[(i - PIE.length) % GREYS.length]);
+      return { total: r2(tot), slices: cr.map((r, i) => ({ key: "cat|" + r.category, name: r.category, category: r.category, amount: r.amount, count: r.count, color: colorFor(i), rows: subs.filter((x) => x.category === r.category), other: true, kicker: "Category" })) };
+    }
+    const rows = subRows(), total = rows.reduce((s, r) => s + r.amount, 0);
+    if (!rows.length || total <= 0) return { slices: [], total: 0 };
+    const big = [];
+    for (const r of rows) { if (big.length < PIE.length && r.amount / total >= 0.02) big.push(r); else break; }
+    const one = (r, color) => ({ key: r.category + "|" + r.sub, name: r.category === "Uncategorised" ? "Uncategorised: " + r.sub : r.sub, category: r.category, amount: r.amount, count: r.count, color, rows: [r] });
+    const slices = big.map((r, i) => one(r, PIE[i]));
+    const rest = rows.slice(big.length), groups = new Map();
+    for (const r of rest) { const g = groups.get(r.category) || []; g.push(r); groups.set(r.category, g); }
+    const tail = [];
+    let gi = 0;
+    for (const [cat, g] of [...groups].sort((a, b) => b[1].reduce((s, r) => s + r.amount, 0) - a[1].reduce((s, r) => s + r.amount, 0))) {
+      const amt = r2(g.reduce((s, r) => s + r.amount, 0));
+      if (amt / total < 0.01) { tail.push(...g); continue; }
+      const color = GREYS[gi++ % GREYS.length];
+      slices.push(g.length === 1 ? one(g[0], color) : { key: "__other|" + cat, name: "Other " + cat + " (" + g.length + ")", category: cat, amount: amt, count: g.reduce((s, r) => s + r.count, 0), color, rows: g, other: true });
+    }
+    if (tail.length) slices.push(tail.length === 1 ? one(tail[0], GREYS[gi % GREYS.length]) : { key: "__other|rest", name: "Everything else (" + tail.length + ")", category: "", amount: r2(tail.reduce((s, r) => s + r.amount, 0)), count: tail.reduce((s, r) => s + r.count, 0), color: GREYS[gi % GREYS.length], rows: tail, other: true });
+    return { slices, total: r2(total) };
+  }
+  function drawSubPie() {
+    const box = $("subPie"), leg = $("subLegend"); box.replaceChildren(); leg.replaceChildren();
+    const { slices, total } = pieSlices();
+    if (!slices.length) { box.append(el("p", { className: "empty", textContent: "No money out for this selection." })); return; }
+    const S = 220, R = 104, r0 = 62, c = S / 2;
+    const svg = svgEl("svg", { viewBox: `0 0 ${S} ${S}`, role: "img", "aria-label": "Money out by subcategory" }); box.append(svg);
+    const pt = (a, rad) => [c + rad * Math.sin(a), c - rad * Math.cos(a)];
+    let a0 = 0;
+    const tip = tipFor(box);
+    for (const sl of slices) {
+      const frac = sl.amount / total, a1 = a0 + frac * Math.PI * 2, large = a1 - a0 > Math.PI ? 1 : 0;
+      let d;
+      if (frac > 0.9999) d = `M${c},${c - R}A${R},${R} 0 1 1 ${c - 0.01},${c - R}L${c - 0.01},${c - r0}A${r0},${r0} 0 1 0 ${c},${c - r0}Z`;
+      else { const [x1, y1] = pt(a0, R), [x2, y2] = pt(a1, R), [x3, y3] = pt(a1, r0), [x4, y4] = pt(a0, r0); d = `M${x1},${y1}A${R},${R} 0 ${large} 1 ${x2},${y2}L${x3},${y3}A${r0},${r0} 0 ${large} 0 ${x4},${y4}Z`; }
+      const path = svgEl("path", { d, fill: sl.color, class: drawer.open && drawer.key === sl.key ? "on" : "" });
+      path.addEventListener("click", () => openSlice(sl));
+      path.addEventListener("mousemove", (ev) => showTip(box, tip, ev, sl.kicker ? "Category" : sl.other ? "Smaller subcategories" : sl.category, [[null, sl.name + ": " + money(sl.amount) + " (" + Math.round(frac * 100) + "%)"]]));
+      path.addEventListener("mouseleave", () => { tip.hidden = true; });
+      svg.append(path); a0 = a1;
+      const b = el("button", { type: "button", className: drawer.open && drawer.key === sl.key ? "on" : "" }, [el("i", { className: "sw", style: `background:${sl.color}` }), el("span", { className: "nm", textContent: sl.name, title: sl.category ? sl.category + " · " + sl.name : sl.name }), el("span", { className: "num", textContent: money(sl.amount, 0) }), el("span", { className: "pc num", textContent: Math.round(frac * 100) + "%" })]);
+      b.addEventListener("click", () => openSlice(sl));
+      leg.append(el("li", {}, [b]));
+    }
+    const t1 = svgEl("text", { x: c, y: c - 4, "text-anchor": "middle", class: "centre", "font-size": 18, "font-weight": 600 }); t1.textContent = money(total, 0);
+    const t2 = svgEl("text", { x: c, y: c + 16, "text-anchor": "middle", fill: C.muted, "font-size": 12 }); t2.textContent = "money out";
+    svg.append(t1, t2);
+  }
+
+  const drawer = { open: false, key: "", parentKey: "", refresh() {} };
+  function setDrawer(title, kicker, sub, head, rows, csv, back) {
+    $("drawerTitle").textContent = title; $("drawerKicker").textContent = kicker; $("drawerSub").textContent = sub;
+    $("drawerHead").replaceChildren(el("tr", {}, head.map((h) => el("th", { className: h.n ? "n" : "", textContent: h.label }))));
+    $("drawerBody").replaceChildren(...(rows.length ? rows : [el("tr", {}, [el("td", { colSpan: head.length, className: "empty", textContent: "Nothing here for this selection." })])]));
+    $("drawerBack").hidden = !back; drawer.csv = csv; $("drawerCsv").hidden = !downloads;
+    if ($("drawer").hidden) { $("drawer").hidden = false; $("drawerClose").focus(); }
+    drawer.open = true;
+  }
+  function openSlice(sl) {
+    drawer.key = sl.key; drawer.parentKey = "";
+    drawer.refresh = () => { const again = pieSlices().slices.find((x) => x.key === drawer.key); if (again) openSlice(again); else closeDrawer(); };
+    const scope = (ov.month ? mfmt(ov.month, true) : "All months") + (ov.account ? ", " + ov.account : "") + (ov.who ? ", spent by " + ov.who : "");
+    if (sl.other) {
+      const rows = sl.rows.map((r) => { const tr = el("tr", { className: "click", tabIndex: 0 }, [el("td", { textContent: r.category }), el("td", { textContent: r.sub }), el("td", { className: "n num", textContent: r.count }), el("td", { className: "n num", textContent: money(r.amount) })]);
+        const go = () => openSub(r, sl); tr.addEventListener("click", go); tr.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); }); return tr; });
+      setDrawer(sl.name, sl.kicker || "Smaller subcategories", scope + " · " + money(sl.amount) + " across " + sl.count + " transactions. Click a row to see its transactions.",
+        [{ label: "Category" }, { label: "Subcategory" }, { label: "Count", n: 1 }, { label: "Amount", n: 1 }], rows,
+        () => ["2up-other-subcategories-" + stamp(), ["Category", "Subcategory", "Count", "Amount"], sl.rows.map((r) => [r.category, r.sub, r.count, r.amount.toFixed(2)])], false);
+    } else openSub(sl.rows[0], null);
+    drawSubPie();
+  }
+  function openSub(r, fromOther) {
+    if (fromOther) drawer.parentKey = fromOther.key;
+    const items = outRows().filter((x) => x.k.category === r.category && x.k.sub === r.sub).map((x) => x.t).sort((a, b) => (a.date < b.date ? 1 : -1));
+    const scope = (ov.month ? mfmt(ov.month, true) : "All months") + (ov.account ? ", " + ov.account : "") + (ov.who ? ", spent by " + ov.who : "");
+    const rows = items.map((t) => el("tr", {}, [el("td", { className: "num", textContent: dfmt(t.date) }), el("td", {}, [el("div", { className: "desc", textContent: t.description }), t.reference ? el("div", { className: "small muted", textContent: t.reference }) : ""]), el("td", { textContent: t.spentBy }), el("td", { className: "n num", textContent: money(-t.amount) })]));
+    setDrawer(r.sub, r.category, scope + " · " + money(r.amount) + " across " + r.count + " transactions.",
+      [{ label: "Date" }, { label: "Where / who" }, { label: "Spent by" }, { label: "Amount", n: 1 }], rows,
+      () => ["2up-" + (r.sub || "subcategory").toLowerCase().replace(/[^a-z0-9]+/g, "-") + "-" + stamp(), ["Date", "Account", "Spent by", "Description", "Reference", "Amount"], items.map((t) => [t.date, t.account, t.spentBy, t.description, t.reference, (-t.amount).toFixed(2)])], !!fromOther);
+  }
+  function openPerson(person) {
+    drawer.key = "person|" + person; drawer.parentKey = "";
+    drawer.refresh = () => { if (peopleRows().some((r) => r.person === person)) openPerson(person); else closeDrawer(); };
+    const items = outRows().filter((x) => x.k.category === "Transfers" && x.k.to === person).map((x) => x.t).sort((a, b) => (a.date < b.date ? 1 : -1));
+    const total = r2(-items.reduce((s, t) => s + t.amount, 0));
+    const scope = (ov.month ? mfmt(ov.month, true) : "All months") + (ov.account ? ", " + ov.account : "") + (ov.who ? ", sent by " + ov.who : "");
+    const rows = items.map((t) => el("tr", {}, [el("td", { className: "num", textContent: dfmt(t.date) }), el("td", {}, [el("div", { textContent: t.reference || "—" }), el("div", { className: "small muted", textContent: t.account + " · " + t.type })]), el("td", { textContent: t.spentBy }), el("td", { className: "n num", textContent: money(-t.amount) })]));
+    setDrawer("Transfer - " + person, "Transfers to people", scope + " · " + money(total) + " across " + items.length + " transfers.",
+      [{ label: "Date" }, { label: "Reference" }, { label: "Sent by" }, { label: "Amount", n: 1 }], rows,
+      () => ["2up-transfers-" + person.toLowerCase().replace(/[^a-z0-9]+/g, "-") + "-" + stamp(), ["Date", "Account", "Sent by", "Description", "Reference", "Type", "Amount"], items.map((t) => [t.date, t.account, t.spentBy, t.description, t.reference, t.type, (-t.amount).toFixed(2)])], false);
+    drawSubPie();
+  }
+  function closeDrawer() { $("drawer").hidden = true; drawer.open = false; drawer.key = ""; drawSubPie(); }
+  $("drawerClose").addEventListener("click", closeDrawer);
+  for (const b of document.querySelectorAll(".seg-b[data-pie]")) b.addEventListener("click", () => {
+    pieMode = b.dataset.pie;
+    for (const o of document.querySelectorAll(".seg-b[data-pie]")) o.setAttribute("aria-pressed", String(o === b));
+    $("pieNote").textContent = pieMode === "category" ? "Money out by Up category, with Transfers and Uncategorised as their own slices. Click a slice or a name to see its subcategories."
+      : "Money out by Up subcategory. The biggest get their own slice; smaller ones are grouped by category in grey. Transfers show who they went to. Click a slice or a name for the breakdown.";
+    if (drawer.open) closeDrawer(); else drawSubPie();
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && drawer.open && !document.querySelector(".modal-back")) closeDrawer(); });
+  $("drawerBack").addEventListener("click", () => { const o = pieSlices().slices.find((x) => x.key === drawer.parentKey); if (o) openSlice(o); });
+  $("drawerCsv").addEventListener("click", async () => {
+    if (!downloads || !drawer.csv) return;
+    const [name, head, rows] = drawer.csv();
+    try { await downloads.save({ filename: name + ".csv", data: toCSV(head, rows) }); } catch (e) { /* declined or unavailable: nothing to do */ }
+  });
+
+  function drawCats(rows) {
+    const box = $("catbars"); box.replaceChildren();
+    if (!rows.length) { box.append(el("p", { className: "empty", textContent: "No money out for this selection." })); return; }
+    const W = Math.max(300, box.clientWidth || 600), rowH = 30, H = rows.length * rowH + 4;
+    box.style.minHeight = H + "px";
+    const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Money out by category" }); box.append(svg);
+    const measure = (s) => { const p = svgEl("text"); p.textContent = s; svg.append(p); const w = p.getComputedTextLength(); p.remove(); return w; };
+    const lw = Math.max(...rows.map((r) => measure(r.category))), vw = Math.max(...rows.map((r) => measure(money(r.amount, 0))));
+    const maxW = Math.max(40, W - lw - vw - 30), max = rows[0].amount || 1;
+    const tip = tipFor(box);
+    rows.forEach((r, i) => {
+      const yy = i * rowH + 2, w = Math.max(2, (r.amount / max) * maxW);
+      const g = svgEl("g", { class: "hit", opacity: ov.cat && ov.cat !== r.category ? 0.35 : 1 });
+      g.append(svgEl("rect", { x: 0, y: yy, width: W, height: rowH, fill: "transparent" }));
+      const t = svgEl("text", { x: lw, y: yy + rowH / 2 + 4, "text-anchor": "end", class: "lbl" }); t.textContent = r.category; g.append(t);
+      g.append(svgEl("rect", { x: lw + 10, y: yy + 6, width: w, height: rowH - 12, rx: 3, fill: r.category === "Transfers" ? C.peach : r.category === "Uncategorised" ? C.muted : C.navy }));
+      const v = svgEl("text", { x: lw + 16 + w, y: yy + rowH / 2 + 4 }); v.textContent = money(r.amount, 0); g.append(v);
+      g.addEventListener("mousemove", (ev) => showTip(box, tip, ev, r.category, [[null, r.count + " transactions, " + money(r.amount)]]));
+      g.addEventListener("mouseleave", () => { tip.hidden = true; });
+      g.addEventListener("click", () => { ov.cat = ov.cat === r.category ? "" : r.category; renderOverview(); });
+      svg.append(g);
+    });
+  }
+
+  // ---------- Category editing ----------
+  function catSelect(value, blank) {
+    const s = el("select");
+    s.append(el("option", { value: "", textContent: blank || "Choose a category" }));
+    for (const p of cats) { const g = el("optgroup", { label: p.name }); for (const c of p.children) g.append(el("option", { value: c.id, textContent: c.name })); s.append(g); }
+    s.append(el("option", { value: "__none", textContent: "Remove category" }));
+    s.value = value || "";
+    return s;
+  }
+  function statusPill(t) {
+    const c = changes[t.id]; if (!c) return el("span");
+    const map = { staged: "Ready to send", pending: "Sending to Up", applied: "Updated in Up", failed: "Up refused this" };
+    const p = el("span", { className: "pill " + c.status, textContent: map[c.status] || c.status });
+    if (c.status === "failed" && c.error) p.title = c.error;
+    const wrap = el("span", {}, [p]);
+    if (c.status === "staged" && canWrite) { const u = el("button", { className: "undo", type: "button", textContent: "Undo" }); u.addEventListener("click", () => unstage([t.id]).catch(showDbError)); wrap.append(u); }
+    return wrap;
+  }
+  async function stage(ids, to) {
+    if (!db || !canWrite) return;
+    await Promise.all(ids.map((id) => {
+      const t = tx.find((x) => x.id === id);
+      if (!t || !t.isCategorizable) return null;
+      if ((to || "") === (t.categoryId || "")) return db.doc("changes/" + id).delete();
+      return db.doc("changes/" + id).set({ txId: id, to: to || null, from: t.categoryId || null, description: t.description, amount: t.amount, date: t.date, status: "staged", at: new Date().toISOString() });
+    }));
+  }
+  async function unstage(ids) { if (db) await Promise.all(ids.map((id) => db.doc("changes/" + id).delete())); }
+  function onPick(t, sel) { sel.addEventListener("change", () => { if (sel.value) stage([t.id], sel.value === "__none" ? null : sel.value).catch(showDbError); }); }
+
+  // ---------- Tags ----------
+  function tagSelect(id, blank) {
+    const s = el("select"); if (id) s.id = id;
+    s.append(el("option", { value: "", textContent: blank || "Choose a tag" }));
+    for (const n of tagList()) s.append(el("option", { value: n, textContent: n }));
+    s.append(el("option", { value: "__new", textContent: "Create new tag…" }));
+    return s;
+  }
+  function tagCell(t) {
+    const wrap = el("span");
+    for (const n of t.tags || []) wrap.append(el("span", { className: "tagchip", textContent: n }));
+    const c = tagChanges[t.id];
+    for (const n of pendingAdds(t)) {
+      if ((t.tags || []).includes(n)) continue;
+      const chip = el("span", { className: "tagchip new", title: c.status === "pending" ? "Sending to Up" : "Ready to send" }, [n]);
+      if (c.status === "staged" && canWrite) { const x = el("button", { type: "button", textContent: "×" }); x.setAttribute("aria-label", "Remove tag " + n); x.addEventListener("click", () => unstageTag(t.id, n).catch(showDbError)); chip.append(x); }
+      wrap.append(chip);
+    }
+    if (c && c.status === "failed") wrap.append(el("span", { className: "pill failed", textContent: "Tag refused", title: c.error || "" }));
+    if (canWrite) {
+      const full = allTags(t).length >= MAX_TAGS;
+      const sel = tagSelect("", full ? "6 tags (Up's limit)" : "Add tag…");
+      sel.className = "tagpick"; sel.disabled = full; sel.setAttribute("aria-label", "Add a tag to " + t.description);
+      for (const o of sel.options) if (o.value && allTags(t).includes(o.value)) o.disabled = true;
+      sel.addEventListener("change", () => {
+        const v = sel.value;
+        if (v === "__new") { sel.value = ""; openNewTag((name) => { if (name) stageTag([t.id], name).catch(showDbError); fillTagControls(); }); return; }
+        if (v) stageTag([t.id], v).catch(showDbError);
+      });
+      wrap.append(el("div", {}, [sel]));
+    }
+    return wrap;
+  }
+  async function stageTag(ids, name) {
+    if (!db || !canWrite || !name) return { skipped: 0 };
+    let skipped = 0;
+    await Promise.all(ids.map((id) => {
+      const t = tx.find((x) => x.id === id); if (!t) return null;
+      const c = tagChanges[id], add = c && c.status === "staged" ? [...(c.add || [])] : [];
+      if ((t.tags || []).includes(name) || add.includes(name)) return null;
+      if ((t.tags || []).length + add.length >= MAX_TAGS) { skipped++; return null; }
+      add.push(name);
+      return db.doc("tagChanges/" + id).set({ txId: id, add, description: t.description, date: t.date, amount: t.amount, status: "staged", at: new Date().toISOString() });
+    }));
+    return { skipped };
+  }
+  async function unstageTag(id, name) {
+    const c = tagChanges[id]; if (!c || !db) return;
+    const add = (c.add || []).filter((n) => n !== name);
+    if (add.length) await db.doc("tagChanges/" + id).update({ add }); else await db.doc("tagChanges/" + id).delete();
+  }
+
+  // Create-tag dialog. Up has no separate "create tag" call: a tag exists in Up once it is on a transaction,
+  // so a new tag is saved here and created in Up when you send it with a transaction.
+  function openNewTag(onDone) {
+    const back = el("div", { className: "modal-back" });
+    const input = el("input", { type: "text", id: "newTagName", maxLength: 60, autocomplete: "off" });
+    const err = el("p", { className: "small status-bad" }); err.hidden = true;
+    const cancel = el("button", { className: "btn ghost", type: "button", textContent: "Cancel" });
+    const ok = el("button", { className: "btn", type: "button", textContent: "Create tag" });
+    const box = el("div", { className: "modal", role: "dialog" }, [
+      el("h3", { textContent: "Create a new tag", id: "newTagTitle" }),
+      el("label", { className: "label", htmlFor: "newTagName", textContent: "Tag name" }), input, err,
+      el("p", { className: "small muted", textContent: "It appears in the tag list straight away. Up creates it when you send it with a transaction." }),
+      el("div", { className: "row" }, [cancel, ok])]);
+    box.setAttribute("aria-modal", "true"); box.setAttribute("aria-labelledby", "newTagTitle");
+    back.append(box); document.body.append(back); input.focus();
+    const close = (name) => { back.remove(); onDone(name || ""); };
+    const create = async () => {
+      const name = input.value.trim().replace(/\s+/g, " ");
+      if (!name) { err.textContent = "Type a name for the tag."; err.hidden = false; return; }
+      const existing = tagList().find((n) => n.toLowerCase() === name.toLowerCase());
+      if (existing) { close(existing); return; }
+      ok.disabled = true;
+      try { await db.doc("tags/" + tagDocId(name)).set({ name, createdAt: new Date().toISOString() }); newTags[tagDocId(name)] = { name }; close(name); }
+      catch (e) { ok.disabled = false; err.textContent = "The tag wasn't saved. Try again in a moment."; err.hidden = false; }
+    };
+    ok.addEventListener("click", create); cancel.addEventListener("click", () => close(""));
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") create(); if (e.key === "Escape") close(""); });
+    back.addEventListener("click", (e) => { if (e.target === back) close(""); });
+  }
+  function fillTagControls() {
+    const bv = $("bulkTag").value; const nb = tagSelect("bulkTag", "Choose a tag"); nb.value = tagList().includes(bv) ? bv : ""; $("bulkTag").replaceWith(nb);
+    nb.addEventListener("change", () => {
+      if (nb.value === "__new") { if (!canWrite) { nb.value = ""; return; } openNewTag((name) => { fillTagControls(); $("bulkTag").value = name; syncBulk(); }); return; }
+      syncBulk();
+    });
+    const fv = $("fTag").value;
+    $("fTag").replaceChildren(el("option", { value: "", textContent: "Any tag" }), ...tagList().map((n) => el("option", { value: n, textContent: n })));
+    $("fTag").value = tagList().includes(fv) ? fv : "";
+  }
+
+  // ---------- Needs a category ----------
+  function needsRows() {
+    const dir = $("needsDir").value, who = $("needsWho").value, q = $("needsQ").value.trim().toLowerCase();
+    return tx.filter((t) => t.isCategorizable && !t.categoryId && (dir === "all" || (dir === "out" ? t.amount < 0 : t.amount >= 0)) &&
+      (!who || t.spentBy === who) && (!q || (t.description + " " + t.reference + " " + t.rawText).toLowerCase().includes(q)));
+  }
+  function renderNeeds() {
+    const rows = needsRows();
+    $("needsBadge").textContent = tx.filter((t) => t.isCategorizable && !t.categoryId && t.amount < 0 && !(changes[t.id] && changes[t.id].status !== "failed")).length;
+    if ($("view-needs").hidden) return;
+    const body = $("needsBody"); body.replaceChildren();
+    if (!rows.length) body.append(el("tr", {}, [el("td", { colSpan: 10, className: "empty", textContent: "Nothing left to categorise here." })]));
+    for (const t of rows) {
+      const c = changes[t.id];
+      const tr = el("tr", { className: c ? c.status : "" });
+      const cb = el("input", { type: "checkbox", checked: checked.has(t.id), disabled: !canWrite }); cb.setAttribute("aria-label", "Tick " + t.description);
+      cb.addEventListener("change", () => { cb.checked ? checked.add(t.id) : checked.delete(t.id); syncBulk(); });
+      const sel = catSelect(c && c.status !== "failed" ? (c.to || "__none") : ""); sel.disabled = !canWrite; sel.setAttribute("aria-label", "Category for " + t.description); onPick(t, sel);
+      tr.append(el("td", {}, [cb]), el("td", { className: "num", textContent: dfmt(t.date) }), el("td", { textContent: t.spentBy }),
+        el("td", {}, [el("div", { className: "desc", textContent: t.description }), el("div", { className: "small muted", textContent: t.account })]),
+        el("td", { className: "hide-sm", textContent: t.reference }), el("td", { className: "hide-sm muted", textContent: t.type }),
+        el("td", { className: "n num" + (t.amount > 0 ? " in" : ""), textContent: (t.amount > 0 ? "+" : "") + money(t.amount) }), el("td", {}, [sel]), el("td", {}, [tagCell(t)]), el("td", {}, [statusPill(t)]));
+      body.append(tr);
+    }
+    $("checkAll").checked = rows.length > 0 && rows.every((t) => checked.has(t.id));
+    syncBulk();
+  }
+  function syncBulk() {
+    $("bulkApply").disabled = !canWrite || !checked.size || !$("bulkCat").value; $("bulkApply").textContent = checked.size ? "Set " + checked.size + " ticked" : "Set category";
+    const tv = $("bulkTag").value; $("bulkTagApply").disabled = !canWrite || !checked.size || !tv || tv === "__new"; $("bulkTagApply").textContent = checked.size ? "Tag " + checked.size + " ticked" : "Add tag";
+  }
+
+  // ---------- All transactions ----------
+  function allRows() {
+    const who = $("fWho").value, par = $("fParent").value, sub = $("fSub").value, acc = $("fAccount").value, dir = $("fDir").value;
+    const tag = $("fTag").value, from = $("fFrom").value, to = $("fTo").value, min = parseFloat($("fMin").value), max = parseFloat($("fMax").value), q = $("fQ").value.trim().toLowerCase();
+    return tx.filter((t) => {
+      const [p, s] = label(t), a = Math.abs(t.amount);
+      return (!who || t.spentBy === who) && (!par || p === par) && (!sub || s === sub) && (!acc || t.account === acc) && (!tag || allTags(t).includes(tag)) && (!dir || (dir === "out" ? t.amount < 0 : t.amount >= 0)) &&
+        (!from || t.date >= from) && (!to || t.date <= to) && (isNaN(min) || a >= min) && (isNaN(max) || a <= max) &&
+        (!q || [t.description, t.reference, t.rawText, t.account, t.spentBy, p, s, t.type, ...allTags(t)].join(" ").toLowerCase().includes(q));
+    });
+  }
+  function renderAll() {
+    if ($("view-transactions").hidden) return;
+    const rows = allRows();
+    $("allCount").textContent = rows.length.toLocaleString("en-AU");
+    const out = rows.filter((t) => t.amount < 0).reduce((s, t) => s + t.amount, 0), inn = rows.filter((t) => t.amount >= 0).reduce((s, t) => s + t.amount, 0);
+    $("allSum").textContent = money(out + inn); $("allOut").textContent = money(-out); $("allIn").textContent = money(inn);
+    const body = $("allBody"); body.replaceChildren();
+    if (!rows.length) body.append(el("tr", {}, [el("td", { colSpan: 11, className: "empty", textContent: "No transactions match these filters." })]));
+    const frag = document.createDocumentFragment();
+    for (const t of rows) {
+      const c = changes[t.id], [p, s] = label(t);
+      const tr = el("tr", { className: c ? c.status : "" });
+      let change;
+      if (t.isCategorizable && canWrite) { const sel = catSelect("", "Change to…"); sel.setAttribute("aria-label", "Change category for " + t.description); onPick(t, sel); change = el("span", {}, [sel, c ? el("div", {}, [statusPill(t)]) : ""]); }
+      else change = el("span", { className: "small muted", textContent: t.isCategorizable ? "" : "Up doesn't allow" });
+      const how = [t.type, t.cardMethod].filter(Boolean).join(" · ") + (t.foreign ? " · " + t.foreign : "") + (t.status === "Held" ? " · Pending" : "");
+      tr.append(el("td", { className: "num", textContent: dfmt(t.date) }), el("td", { textContent: t.account }), el("td", { textContent: t.spentBy }),
+        el("td", {}, [el("div", { className: "desc", textContent: t.description }), t.transferAccount ? el("div", { className: "small muted", textContent: (t.amount < 0 ? "To " : "From ") + t.transferAccount }) : ""]),
+        el("td", { className: "hide-sm", textContent: t.reference }), el("td", { className: "hide-sm small muted", textContent: how }),
+        el("td", { className: "n num" + (t.amount > 0 ? " in" : ""), textContent: (t.amount > 0 ? "+" : "") + money(t.amount) }),
+        el("td", { textContent: p }), el("td", { textContent: s }), el("td", {}, [tagCell(t)]), el("td", {}, [change]));
+      frag.append(tr);
+    }
+    body.append(frag);
+  }
+
+  function fillFilters() {
+    const opts = (sel, first, values) => { const v = sel.value; sel.replaceChildren(el("option", { value: "", textContent: first }), ...values.map((x) => el("option", { value: x, textContent: x }))); sel.value = values.includes(v) ? v : ""; };
+    const whos = [...new Set(tx.map((t) => t.spentBy))].sort();
+    opts($("needsWho"), "Anyone", whos); opts($("fWho"), "Anyone", whos);
+    opts($("fAccount"), "All accounts", [...new Set(tx.map((t) => t.account))].sort());
+    opts($("fParent"), "All categories", [...new Set(tx.map((t) => label(t)[0]))].sort());
+    fillSub();
+    const bv = $("bulkCat").value, nb = catSelect(bv, "Choose a category"); nb.id = "bulkCat"; $("bulkCat").replaceWith(nb); nb.addEventListener("change", syncBulk);
+    fillTagControls();
+  }
+  function fillSub() {
+    const par = $("fParent").value, v = $("fSub").value;
+    const subs = [...new Set(tx.filter((t) => !par || label(t)[0] === par).map((t) => label(t)[1]).filter(Boolean))].sort();
+    $("fSub").replaceChildren(el("option", { value: "", textContent: "All subcategories" }), ...subs.map((x) => el("option", { value: x, textContent: x })));
+    $("fSub").value = subs.includes(v) ? v : "";
+  }
+  function resetAllFilters() { for (const id of ["fWho", "fParent", "fSub", "fAccount", "fTag", "fDir", "fFrom", "fTo", "fMin", "fMax", "fQ"]) $(id).value = ""; fillSub(); }
+
+  function renderSync() {
+    const list = [...Object.values(changes), ...Object.values(tagChanges)];
+    const staged = list.filter((c) => c.status === "staged").length, pending = list.filter((c) => c.status === "pending").length, failed = list.filter((c) => c.status === "failed").length;
+    $("stagedCount").textContent = staged === 1 ? "1 change" : staged + " changes";
+    $("sendBtn").disabled = !canWrite || !staged; $("clearStaged").disabled = !canWrite || !staged;
+    const note = $("syncNote"); note.className = "small muted";
+    if (!canWrite) note.textContent = db ? "You can view everything here. Only editors can change categories." : "Category changes need the page open in Claude.";
+    else if (pending) note.textContent = pending + (pending === 1 ? " change is" : " changes are") + " waiting to be applied in Up. This happens within the hour at the latest.";
+    else if (failed) { note.className = "small status-bad"; note.textContent = failed + (failed === 1 ? " change" : " changes") + " couldn't be applied. Hover the red status for Up's reason."; }
+    else if (!staged) note.textContent = "Pick a category or tag. Nothing changes in Up until you press Send to Up.";
+    else note.textContent = "Saved here. Press Send to Up when you're ready.";
+  }
+  function renderEverything() { renderSync(); renderNeeds(); renderAll(); if (!$("view-overview").hidden) renderOverview(); }
+  function showDbError(e) { const n = $("syncNote"); n.className = "small status-bad"; n.textContent = e && e.code === "quota_exceeded" ? "The change list is full. Send or clear changes, then try again." : "That change wasn't saved. Try again in a moment."; }
+
+  async function send() {
+    const ids = Object.values(changes).filter((c) => c.status === "staged").map((c) => c.txId);
+    const tagIds = Object.values(tagChanges).filter((c) => c.status === "staged").map((c) => c.txId);
+    if ((!ids.length && !tagIds.length) || !db) return;
+    $("sendBtn").disabled = true;
+    const at = new Date().toISOString();
+    await Promise.all([...ids.map((id) => db.doc("changes/" + id).update({ status: "pending", requestedAt: at })), ...tagIds.map((id) => db.doc("tagChanges/" + id).update({ status: "pending", requestedAt: at }))]);
+    await db.doc("meta/sync").set({ requestedAt: at, count: ids.length, tagCount: tagIds.length });
+    const note = $("syncNote");
+    if (!mcp) { note.textContent = "Saved. The hourly check applies these in Up, or ask Claude in chat to do it now."; return; }
+    try {
+      await mcp.callTool("Claude Code Remote", "fire_trigger", { trigger_id: APPLY_TASK, text: "Send to Up was pressed with " + ids.length + " category and " + tagIds.length + " tag change(s) pending." });
+      note.textContent = "Sent. Claude is applying these in Up now; they show as Updated in Up within a few minutes.";
+    } catch (e) {
+      const c = e && e.code; note.className = "small status-bad";
+      note.className = "small muted";
+      note.textContent = c === "not_in_manifest" ? "Saved. Starting Claude from this page isn't allowed for you, so the hourly check will apply these in Up."
+        : "Saved. Claude couldn't be started right now, so the hourly check will apply these in Up within the hour.";
+    }
+  }
+
+  // ---------- Tabs ----------
+  const VIEWS = ["overview", "needs", "transactions"];
+  function show(v) {
+    if (!VIEWS.includes(v)) v = "overview";
+    for (const x of VIEWS) { $("tab-" + x).setAttribute("aria-selected", String(x === v)); $("view-" + x).hidden = x !== v; }
+    if (location.hash.slice(1) !== v) history.replaceState(null, "", "#" + v);
+    if (v === "overview") renderOverview(); else if (v === "needs") renderNeeds(); else renderAll();
+  }
+  for (const b of document.querySelectorAll(".tab")) b.addEventListener("click", () => show(b.dataset.view));
+  window.addEventListener("hashchange", () => show(location.hash.slice(1)));
+
+  // ---------- Wiring ----------
+  $("oMonth").addEventListener("change", (e) => { ov.month = e.target.value; renderOverview(); });
+  $("oWho").addEventListener("change", (e) => { ov.who = e.target.value; renderOverview(); });
+  $("oAccount").addEventListener("change", (e) => { ov.account = e.target.value; renderOverview(); });
+  $("oCatChip").addEventListener("click", () => { ov.cat = ""; renderOverview(); });
+  $("oReset").addEventListener("click", () => { ov.month = ov.who = ov.cat = ov.account = ""; renderOverview(); });
+  for (const id of ["needsDir", "needsWho", "needsQ"]) $(id).addEventListener("input", renderNeeds);
+  for (const id of ["fWho", "fSub", "fAccount", "fTag", "fDir", "fFrom", "fTo", "fMin", "fMax", "fQ"]) $(id).addEventListener("input", renderAll);
+  $("fParent").addEventListener("input", () => { fillSub(); renderAll(); });
+  $("fReset").addEventListener("click", () => { resetAllFilters(); renderAll(); });
+  $("checkAll").addEventListener("change", (e) => { for (const t of needsRows()) e.target.checked ? checked.add(t.id) : checked.delete(t.id); renderNeeds(); });
+  $("bulkApply").addEventListener("click", () => { const v = $("bulkCat").value; if (!v) return; stage([...checked], v === "__none" ? null : v).then(() => { checked.clear(); renderNeeds(); }).catch(showDbError); });
+  $("bulkTagApply").addEventListener("click", () => {
+    const v = $("bulkTag").value; if (!v || v === "__new") return;
+    stageTag([...checked], v).then(({ skipped }) => {
+      checked.clear(); renderNeeds();
+      if (skipped) { const n = $("syncNote"); n.className = "small status-bad"; n.textContent = skipped + (skipped === 1 ? " transaction already has" : " transactions already have") + " " + MAX_TAGS + " tags, Up's limit, so the tag wasn't added there."; }
+    }).catch(showDbError);
+  });
+  $("sendBtn").addEventListener("click", () => send().catch(showDbError));
+  $("clearStaged").addEventListener("click", () => Promise.all([unstage(Object.values(changes).filter((c) => c.status === "staged").map((c) => c.txId)), ...Object.values(tagChanges).filter((c) => c.status === "staged").map((c) => db.doc("tagChanges/" + c.txId).delete())]).catch(showDbError));
+  for (const b of document.querySelectorAll("[data-csv]")) { b.hidden = true; b.addEventListener("click", () => downloadCSV(b.dataset.csv, b)); }
+  let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (!$("view-overview").hidden) { drawTrend(); drawCats(catRows()); drawBalance(); drawFlow(); } }, 150); });
+
+  async function boot() {
+    try {
+      const [t, c, b, tg] = await Promise.all(["data/transactions.json", "data/categories.json", "data/balances.json", "data/tags.json"].map((u) => fetch(u).then((r) => { if (!r.ok) throw new Error(u); return r.json(); })));
+      tx = t; cats = c; balances = b; upTags = tg;
+      for (const p of cats) for (const ch of p.children) subIndex[ch.id] = { name: ch.name, parentName: p.name };
+      $("dataDate").textContent = tx.length ? dfmt(tx[0].date) : "—";
+    } catch (e) {
+      $("lede").textContent = "The transaction data didn't load. Reload the page to try again.";
+      return;
+    }
+    fillFilters();
+    show(location.hash.slice(1) || "overview");
+    renderSync();
+    if (!window.claude) return;
+    const [dbNs, user, mcpNs, dl] = await Promise.all(["db", "user", "mcp", "downloads"].map((n) => claude.use(n)));
+    db = dbNs; mcp = mcpNs; downloads = dl;
+    for (const btn of document.querySelectorAll("[data-csv]")) btn.hidden = !downloads;
+    canWrite = !!db && (user ? await user.canEdit() : false);
+    if (db) db.collection("changes").onSnapshot((snap) => {
+      changes = {}; for (const d of snap.docs) changes[d.id] = d.data();
+      fillFilters(); renderEverything();
+    }, () => { canWrite = false; renderEverything(); });
+    if (db) db.collection("tagChanges").onSnapshot((snap) => { tagChanges = {}; for (const d of snap.docs) tagChanges[d.id] = d.data(); fillTagControls(); renderEverything(); }, () => {});
+    if (db) db.collection("tags").onSnapshot((snap) => { newTags = {}; for (const d of snap.docs) newTags[d.id] = d.data(); fillTagControls(); renderEverything(); }, () => {});
+    renderEverything();
+  }
+  boot();
+})();
+</script>

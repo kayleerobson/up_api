@@ -1,0 +1,1594 @@
+# Up Banking API (v1)
+
+Welcome to the Up Banking API reference for LLMs. This document is optimized for large language models to understand the Up Banking API schema, parameters, endpoints, and client usage.
+
+## General Information
+
+- **Base URL:** `https://api.up.com.au/api/v1`
+- **Content Type:** `application/json` (both request and response body, unless specified otherwise)
+- **Version:** `v1` (beta)
+
+### Authentication
+All requests require a personal access token supplied as a Bearer token in the `Authorization` header:
+```http
+Authorization: Bearer up:yak:...
+```
+Keep this token secure and never expose it in client-side code.
+
+### Pagination
+Many endpoints support cursor-based pagination. If an endpoint supports pagination, it returns a top-level `links` object:
+- `links.prev`: URL to the previous page of results (or `null`)
+- `links.next`: URL to the next page of results (or `null`)
+
+**Important for LLMs:** Do not construct pagination URLs manually. Instead, execute the initial request, then dynamically follow the `next` link repeatedly until it becomes `null`.
+
+### Code Examples
+
+#### 1. Bearer Client Initialization & List Accounts (Node.js)
+```javascript
+const token = process.env.UP_API_TOKEN;
+
+async function getAccounts() {
+  const response = await fetch('https://api.up.com.au/api/v1/accounts', {
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  if (!response.ok) {
+    throw new Error(`Error: ${response.status} ${response.statusText}`);
+  }
+  return await response.json();
+}
+```
+
+#### 2. Automatic Pagination / Enumeration (Python)
+```python
+import os
+import requests
+
+token = os.environ.get("UP_API_TOKEN")
+headers = {
+    "Authorization": f"Bearer ${token}"
+}
+
+def fetch_all_transactions():
+    url = "https://api.up.com.au/api/v1/transactions"
+    all_transactions = []
+    
+    while url:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        payload = response.json()
+        
+        all_transactions.extend(payload.get("data", []))
+        
+        # Follow opaque pagination links dynamically
+        url = payload.get("links", {}).get("next")
+        
+    return all_transactions
+```
+
+#### 3. Error Handling
+When a response is in the `4xx` or `5xx` range, it returns an error response with detailed information about what went wrong.
+```json
+{
+  "errors": [
+    {
+      "status": "403",
+      "title": "Forbidden",
+      "detail": "The access token provided does not have permission to access this resource.",
+      "source": {
+        "parameter": "id"
+      }
+    }
+  ]
+}
+```
+
+**Response Status Codes:**
+- **200** - Successful response: Everything worked as intended
+- **201** - Successful response: A new resource was created successfully—Typically used with POST requests.
+- **204** - Successful response: No content—typically used with DELETE requests.
+- **400** - Bad request: Typically a problem with the query string or an encoding error.
+- **401** - Not authorized: The request was not authenticated.
+- **404** - Not found: Either the endpoint does not exist, or the requested resource does not exist.
+- **422** - Invalid request: The request contains invalid data and was not processed.
+- **429** - Too many requests: You have been rate limited—try later, ideally with exponential backoff.  The X-RateLimit-Remaining response header shows the number remaining.
+- **500 502 503 504** - Server-side errors: Try again later.
+
+**Error Response Schema:**
+* **`errors`**:`Array of ErrorObject` (required) - The list of errors returned in this response.
+  * **`status`**:`string` (required) - The HTTP status code associated with this error. This can also be
+obtained from the response headers. The status indicates the broad type
+of error according to HTTP semantics.
+  * **`title`**:`string` (required) - A short description of this error. This should be stable across
+multiple occurrences of this type of error and typically expands on the
+reason for the status code.
+  * **`detail`**:`string` (required) - A detailed description of this error. This should be considered unique
+to individual occurrences of an error and subject to change. It is
+useful for debugging purposes.
+  * **`source`**:`object` - If applicable, location in the request that this error relates to. This
+may be a parameter in the query string, or a an attribute in the
+request body.
+    * **`parameter`**:`string` - If this error relates to a query parameter, the name of the
+parameter.
+    * **`pointer`**:`string` - If this error relates to an attribute in the request body, a
+rfc-6901 JSON pointer to the attribute.
+
+---
+
+## Endpoint Directory
+
+### Accounts
+- `GET /accounts` - List accounts
+- `GET /accounts/{id}` - Retrieve account
+
+### Attachments
+- `GET /attachments` - List attachments
+- `GET /attachments/{id}` - Retrieve attachment
+
+### Categories
+- `GET /categories` - List categories
+- `GET /categories/{id}` - Retrieve category
+- `PATCH /transactions/{transactionId}/relationships/category` - Categorize transaction
+
+### Tags
+- `GET /tags` - List tags
+- `POST /transactions/{transactionId}/relationships/tags` - Add tags to transaction
+- `DELETE /transactions/{transactionId}/relationships/tags` - Remove tags from transaction
+
+### Transactions
+- `GET /transactions` - List transactions
+- `GET /transactions/{id}` - Retrieve transaction
+- `GET /accounts/{accountId}/transactions` - List transactions by account
+
+### Utility endpoints
+- `GET /util/ping` - Ping
+
+### Webhooks
+- `GET /webhooks` - List webhooks
+- `POST /webhooks` - Create webhook
+- `GET /webhooks/{id}` - Retrieve webhook
+- `DELETE /webhooks/{id}` - Delete webhook
+- `POST /webhooks/{webhookId}/ping` - Ping webhook
+- `GET /webhooks/{webhookId}/logs` - List webhook logs
+- `POST {webhookURL}` - [Webhook] Handling webhook events
+
+---
+
+## Endpoint Reference
+
+### Section: Accounts
+Accounts represent the underlying store used to track balances
+and the transactions that have occurred to modify those balances
+over time. Up currently has three types of account: `SAVER`—used to
+earn interest and to hit savings goals, `TRANSACTIONAL`—used
+for everyday spending, and `HOME_LOAN`-for those with an Up Home loan.
+
+#### List accounts (`GET /accounts`)
+
+Retrieve a paginated list of all accounts for the currently
+authenticated user. The returned list is paginated and can be scrolled
+by following the `prev` and `next` links where present.
+
+**Query Parameters:**
+- `page[size]` - The number of records to return in each page.
+- `filter[accountType]` - The type of account for which to return records. This
+can be used to filter Savers from spending accounts.
+- `filter[ownershipType]` - The account ownership structure for which to return
+records. This can be used to filter 2Up accounts from Up
+accounts.
+
+**Responses:**
+
+##### HTTP 200
+Successful Response
+
+**Response Schema:**
+* **`data`**:`Array of AccountResource` (required) - The list of accounts returned in this response.
+  * **`type`**:`string` (required) - The type of this resource: `accounts`
+  * **`id`**:`string` (required) - The unique identifier for this account.
+  * **`attributes`**:`object` (required)
+    * **`displayName`**:`string` (required) - The name associated with the account in the Up application.
+    * **`accountType`**:`AccountTypeEnum` (required) - The bank account type of this account.
+      * **Enum values:** [`"SAVER"`, `"TRANSACTIONAL"`, `"HOME_LOAN"`]
+    * **`ownershipType`**:`OwnershipTypeEnum` (required) - The ownership structure for this account.
+      * **Enum values:** [`"INDIVIDUAL"`, `"JOINT"`]
+    * **`balance`**:`MoneyObject` (required) - The available balance of the account, taking into account any amounts
+that are currently on hold.
+      * **`currencyCode`**:`string` (required) - The ISO 4217 currency code.
+      * **`value`**:`string` (required) - The amount of money, formatted as a string in the relevant currency.
+For example, for an Australian dollar value of $10.56, this field will
+be `"10.56"`. The currency symbol is not included in the string.
+      * **`valueInBaseUnits`**:`integer` (required) - The amount of money in the smallest denomination for the currency, as a
+64-bit integer.  For example, for an Australian dollar value of $10.56,
+this field will be `1056`.
+    * **`createdAt`**:`string` (required) - The date-time at which this account was first opened.
+  * **`relationships`**:`object` (required)
+    * **`transactions`**:`object` (required)
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+  * **`links`**:`object`
+    * **`self`**:`string` (required) - The canonical link to this resource within the API.
+* **`links`**:`object` (required)
+  * **`prev`**:`string` (required, nullable) - The link to the previous page in the results. If this value is `null`
+there is no previous page.
+  * **`next`**:`string` (required, nullable) - The link to the next page in the results. If this value is `null`
+there is no next page.
+
+---
+
+#### Retrieve account (`GET /accounts/{id}`)
+
+Retrieve a specific account by providing its unique identifier.
+
+**Path Parameters:**
+- `id` (required) - The unique identifier for the account.
+
+**Responses:**
+
+##### HTTP 200
+Successful Response
+
+**Response Schema:**
+* **`data`**:`AccountResource` (required) - The account returned in this response.
+  * **`type`**:`string` (required) - The type of this resource: `accounts`
+  * **`id`**:`string` (required) - The unique identifier for this account.
+  * **`attributes`**:`object` (required)
+    * **`displayName`**:`string` (required) - The name associated with the account in the Up application.
+    * **`accountType`**:`AccountTypeEnum` (required) - The bank account type of this account.
+      * **Enum values:** [`"SAVER"`, `"TRANSACTIONAL"`, `"HOME_LOAN"`]
+    * **`ownershipType`**:`OwnershipTypeEnum` (required) - The ownership structure for this account.
+      * **Enum values:** [`"INDIVIDUAL"`, `"JOINT"`]
+    * **`balance`**:`MoneyObject` (required) - The available balance of the account, taking into account any amounts
+that are currently on hold.
+      * **`currencyCode`**:`string` (required) - The ISO 4217 currency code.
+      * **`value`**:`string` (required) - The amount of money, formatted as a string in the relevant currency.
+For example, for an Australian dollar value of $10.56, this field will
+be `"10.56"`. The currency symbol is not included in the string.
+      * **`valueInBaseUnits`**:`integer` (required) - The amount of money in the smallest denomination for the currency, as a
+64-bit integer.  For example, for an Australian dollar value of $10.56,
+this field will be `1056`.
+    * **`createdAt`**:`string` (required) - The date-time at which this account was first opened.
+  * **`relationships`**:`object` (required)
+    * **`transactions`**:`object` (required)
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+  * **`links`**:`object`
+    * **`self`**:`string` (required) - The canonical link to this resource within the API.
+
+---
+
+### Section: Attachments
+Attachments represent uploaded files that are attached to transactions, these are commonly receipts.
+
+#### List attachments (`GET /attachments`)
+
+Retrieve a list of all attachments. The returned list is [paginated](#pagination) and can
+be scrolled by following the `next` and `prev` links where present.
+
+**Responses:**
+
+##### HTTP 200
+Successful Response
+
+**Response Schema:**
+* **`data`**:`Array of AttachmentResource` (required) - The list of attachments returned in this response.
+  * **`type`**:`string` (required) - The type of this resource: `attachments`
+  * **`id`**:`string` (required) - The unique identifier for this attachment.
+  * **`attributes`**:`object` (required)
+    * **`createdAt`**:`string` (required, nullable) - The date-time when the file was created.
+    * **`fileURL`**:`string` (required, nullable) - A temporary link to download the file.
+    * **`fileURLExpiresAt`**:`string` (required) - The date-time at which the `fileURL` link expires.
+    * **`fileExtension`**:`string` (required, nullable) - File extension for the uploaded attachment.
+    * **`fileContentType`**:`string` (required, nullable) - Content type for the uploaded attachment.
+  * **`relationships`**:`object` (required)
+    * **`transaction`**:`object` (required)
+      * **`data`**:`object` (required)
+        * **`type`**:`string` (required) - The type of this resource: `transactions`
+        * **`id`**:`string` (required) - The unique identifier of the resource within its type.
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+  * **`links`**:`object`
+    * **`self`**:`string` (required) - The canonical link to this resource within the API.
+* **`links`**:`object` (required)
+  * **`prev`**:`string` (required, nullable) - The link to the previous page in the results. If this value is `null`
+there is no previous page.
+  * **`next`**:`string` (required, nullable) - The link to the next page in the results. If this value is `null`
+there is no next page.
+
+---
+
+#### Retrieve attachment (`GET /attachments/{id}`)
+
+Retrieve a specific attachment by providing its unique identifier.
+
+**Path Parameters:**
+- `id` (required) - The unique identifier for the attachment.
+
+**Responses:**
+
+##### HTTP 200
+Successful Response
+
+**Response Schema:**
+* **`data`**:`AttachmentResource` (required) - The attachment returned in this response.
+  * **`type`**:`string` (required) - The type of this resource: `attachments`
+  * **`id`**:`string` (required) - The unique identifier for this attachment.
+  * **`attributes`**:`object` (required)
+    * **`createdAt`**:`string` (required, nullable) - The date-time when the file was created.
+    * **`fileURL`**:`string` (required, nullable) - A temporary link to download the file.
+    * **`fileURLExpiresAt`**:`string` (required) - The date-time at which the `fileURL` link expires.
+    * **`fileExtension`**:`string` (required, nullable) - File extension for the uploaded attachment.
+    * **`fileContentType`**:`string` (required, nullable) - Content type for the uploaded attachment.
+  * **`relationships`**:`object` (required)
+    * **`transaction`**:`object` (required)
+      * **`data`**:`object` (required)
+        * **`type`**:`string` (required) - The type of this resource: `transactions`
+        * **`id`**:`string` (required) - The unique identifier of the resource within its type.
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+  * **`links`**:`object`
+    * **`self`**:`string` (required) - The canonical link to this resource within the API.
+
+---
+
+### Section: Categories
+Categories enable understanding where your money goes by driving
+powerful insights in Up. All categories in Up are pre-defined
+and are automatically assigned to new purchases in most cases. A
+parent-child relationship is used to represent categories,
+however parent categories cannot be directly assigned to
+transactions.
+
+#### List categories (`GET /categories`)
+
+Retrieve a list of all categories and their ancestry. The returned list
+is not paginated.
+
+**Query Parameters:**
+- `filter[parent]` - The unique identifier of a parent category for which to
+return only its children. Providing an invalid category
+identifier results in a `404` response.
+
+**Responses:**
+
+##### HTTP 200
+Successful Response
+
+**Response Schema:**
+* **`data`**:`Array of CategoryResource` (required) - The list of categories returned in this response.
+  * **`type`**:`string` (required) - The type of this resource: `categories`
+  * **`id`**:`string` (required) - The unique identifier for this category. This is a human-readable but
+URL-safe value.
+  * **`attributes`**:`object` (required)
+    * **`name`**:`string` (required) - The name of this category as seen in the Up application.
+  * **`relationships`**:`object` (required)
+    * **`parent`**:`object` (required)
+      * **`data`**:`object` (required, nullable)
+        * **`type`**:`string` (required) - The type of this resource: `categories`
+        * **`id`**:`string` (required) - The unique identifier of the resource within its type.
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+    * **`children`**:`object` (required)
+      * **`data`**:`Array of object` (required)
+        * **`type`**:`string` (required) - The type of this resource: `categories`
+        * **`id`**:`string` (required) - The unique identifier of the resource within its type.
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+  * **`links`**:`object`
+    * **`self`**:`string` (required) - The canonical link to this resource within the API.
+
+---
+
+#### Retrieve category (`GET /categories/{id}`)
+
+Retrieve a specific category by providing its unique identifier.
+
+**Path Parameters:**
+- `id` (required) - The unique identifier for the category.
+
+**Responses:**
+
+##### HTTP 200
+Successful Response
+
+**Response Schema:**
+* **`data`**:`CategoryResource` (required) - The category returned in this response.
+  * **`type`**:`string` (required) - The type of this resource: `categories`
+  * **`id`**:`string` (required) - The unique identifier for this category. This is a human-readable but
+URL-safe value.
+  * **`attributes`**:`object` (required)
+    * **`name`**:`string` (required) - The name of this category as seen in the Up application.
+  * **`relationships`**:`object` (required)
+    * **`parent`**:`object` (required)
+      * **`data`**:`object` (required, nullable)
+        * **`type`**:`string` (required) - The type of this resource: `categories`
+        * **`id`**:`string` (required) - The unique identifier of the resource within its type.
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+    * **`children`**:`object` (required)
+      * **`data`**:`Array of object` (required)
+        * **`type`**:`string` (required) - The type of this resource: `categories`
+        * **`id`**:`string` (required) - The unique identifier of the resource within its type.
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+  * **`links`**:`object`
+    * **`self`**:`string` (required) - The canonical link to this resource within the API.
+
+---
+
+#### Categorize transaction (`PATCH /transactions/{transactionId}/relationships/category`)
+
+Updates the category associated with a transaction. Only transactions
+for which `isCategorizable` is set to true support this operation. The
+`id` is taken from the list exposed on `/categories` and cannot be one of
+the top-level (parent) categories. To de-categorize a transaction, set
+the entire `data` key to `null`. An HTTP `204` is returned on success.
+The associated category, along with its request URL is also exposed via
+the `category` relationship on the transaction resource returned from
+`/transactions/{id}`.
+
+**Path Parameters:**
+- `transactionId` (required) - The unique identifier for the transaction.
+
+**Request Body Schema:**
+* **`data`**:`CategoryInputResourceIdentifier` (required, nullable) - The category to set on the transaction. Set this entire key to `null`
+de-categorize a transaction.
+  * **`type`**:`string` (required) - The type of this resource: `categories`
+  * **`id`**:`string` (required) - The unique identifier of the category, as returned by the `/categories`
+endpoint.
+
+**Responses:**
+
+##### HTTP 204
+Successful Response
+
+---
+
+### Section: Tags
+Tags are custom labels that can be associated with transactions
+on Up. Within the Up application, tags provide additional insight
+into spending. For example, you could have a "Take Away" tag that
+you apply to purchases from food delivery services. The Up API
+allows you to manage the tags associated with transactions. Each
+transaction may have up to 6 tags.
+
+Tags are identified by their labels, which are unique strings,
+so the tag "Holiday" has also the `id` `"Holiday"`.
+
+#### List tags (`GET /tags`)
+
+Retrieve a list of all tags currently in use. The returned list is
+[paginated](#pagination) and can be scrolled by following the `next`
+and `prev` links where present. Results are ordered lexicographically.
+The `transactions` relationship for each tag exposes a link
+to get the transactions with the given tag.
+
+**Query Parameters:**
+- `page[size]` - The number of records to return in each page.
+
+**Responses:**
+
+##### HTTP 200
+Successful Response
+
+**Response Schema:**
+* **`data`**:`Array of TagResource` (required) - The list of tags returned in this response.
+  * **`type`**:`string` (required) - The type of this resource: `tags`
+  * **`id`**:`string` (required) - The label of the tag, which also acts as the tag’s unique identifier.
+  * **`relationships`**:`object` (required)
+    * **`transactions`**:`object` (required)
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+* **`links`**:`object` (required)
+  * **`prev`**:`string` (required, nullable) - The link to the previous page in the results. If this value is `null`
+there is no previous page.
+  * **`next`**:`string` (required, nullable) - The link to the next page in the results. If this value is `null`
+there is no next page.
+
+---
+
+#### Add tags to transaction (`POST /transactions/{transactionId}/relationships/tags`)
+
+Associates one or more tags with a specific transaction. No more than 6
+tags may be present on any single transaction. Duplicate tags are
+silently ignored. An HTTP `204` is returned on success. The associated
+tags, along with this request URL, are also exposed via the `tags`
+relationship on the transaction resource returned from
+`/transactions/{id}`.
+
+**Path Parameters:**
+- `transactionId` (required) - The unique identifier for the transaction.
+
+**Request Body Schema:**
+* **`data`**:`Array of TagInputResourceIdentifier` (required) - The tags to add to or remove from the transaction.
+  * **`type`**:`string` (required) - The type of this resource: `tags`
+  * **`id`**:`string` (required) - The label of the tag, which also acts as the tag’s unique identifier.
+
+**Responses:**
+
+##### HTTP 204
+Successful Response
+
+---
+
+#### Remove tags from transaction (`DELETE /transactions/{transactionId}/relationships/tags`)
+
+Disassociates one or more tags from a specific transaction. Tags that are
+not associated are silently ignored. An HTTP `204` is returned on
+success. The associated tags, along with this request URL, are also
+exposed via the `tags` relationship on the transaction resource returned
+from `/transactions/{id}`.
+
+**Path Parameters:**
+- `transactionId` (required) - The unique identifier for the transaction.
+
+**Request Body Schema:**
+* **`data`**:`Array of TagInputResourceIdentifier` (required) - The tags to add to or remove from the transaction.
+  * **`type`**:`string` (required) - The type of this resource: `tags`
+  * **`id`**:`string` (required) - The label of the tag, which also acts as the tag’s unique identifier.
+
+**Responses:**
+
+##### HTTP 204
+Successful Response
+
+---
+
+### Section: Transactions
+Transactions represent the movement of money into and out of an
+account. They have many characteristics that vary depending on
+the kind of transaction. Transactions may be temporarily `HELD`
+(pending) or `SETTLED`, typically depending on which payment
+method was used at the point of sale.
+
+#### List transactions (`GET /transactions`)
+
+Retrieve a list of all transactions across all accounts for the currently
+authenticated user. The returned list is [paginated](#pagination) and can
+be scrolled by following the `next` and `prev` links where present. To
+narrow the results to a specific date range pass one or both of
+`filter[since]` and `filter[until]` in the query string. These filter
+parameters **should not** be used for pagination. Results are ordered
+newest first to oldest last.
+
+**Query Parameters:**
+- `page[size]` - The number of records to return in each page.
+- `filter[status]` - The transaction status for which to return records. This
+can be used to filter `HELD` transactions from those
+that are `SETTLED`.
+- `filter[since]` - The start date-time from which to return records,
+formatted according to rfc-3339. Not to be used for
+pagination purposes.
+- `filter[until]` - The end date-time up to which to return records,
+formatted according to rfc-3339. Not to be used for
+pagination purposes.
+- `filter[category]` - The category identifier for which to filter transactions.
+Both parent and child categories can be filtered through
+this parameter. Providing an invalid category identifier
+results in a `404` response.
+- `filter[tag]` - A transaction tag to filter for which to return records.
+If the tag does not exist, zero records are returned and
+a success response is given.
+
+**Responses:**
+
+##### HTTP 200
+Successful Response
+
+**Response Schema:**
+* **`data`**:`Array of TransactionResource` (required) - The list of transactions returned in this response.
+  * **`type`**:`string` (required) - The type of this resource: `transactions`
+  * **`id`**:`string` (required) - The unique identifier for this transaction.
+  * **`attributes`**:`object` (required)
+    * **`status`**:`TransactionStatusEnum` (required) - The current processing status of this transaction, according to
+whether or not this transaction has settled or is still held.
+      * **Enum values:** [`"HELD"`, `"SETTLED"`]
+    * **`rawText`**:`string` (required, nullable) - The original, unprocessed text of the transaction. This is often not
+a perfect indicator of the actual merchant, but it is useful for
+reconciliation purposes in some cases.
+    * **`description`**:`string` (required) - A short description for this transaction. Usually the merchant name
+for purchases.
+    * **`message`**:`string` (required, nullable) - Attached message for this transaction, such as a payment message, or a
+transfer note.
+    * **`isCategorizable`**:`boolean` (required) - Boolean flag set to true on transactions that support the use of
+categories.
+    * **`holdInfo`**:`HoldInfoObject` (required, nullable) - If this transaction is currently in the `HELD` status, or was ever in
+the `HELD` status, the `amount` and `foreignAmount` of the
+transaction while `HELD`.
+      * **`amount`**:`MoneyObject` (required) - The amount of this transaction while in the `HELD` status, in
+Australian dollars.
+        * **`currencyCode`**:`string` (required) - The ISO 4217 currency code.
+        * **`value`**:`string` (required) - The amount of money, formatted as a string in the relevant currency.
+For example, for an Australian dollar value of $10.56, this field will
+be `"10.56"`. The currency symbol is not included in the string.
+        * **`valueInBaseUnits`**:`integer` (required) - The amount of money in the smallest denomination for the currency, as a
+64-bit integer.  For example, for an Australian dollar value of $10.56,
+this field will be `1056`.
+      * **`foreignAmount`**:`MoneyObject` (required, nullable) - The foreign currency amount of this transaction while in the `HELD`
+status. This field will be `null` for domestic transactions. The amount
+was converted to the AUD amount reflected in the `amount` field.
+        * **`currencyCode`**:`string` (required) - The ISO 4217 currency code.
+        * **`value`**:`string` (required) - The amount of money, formatted as a string in the relevant currency.
+For example, for an Australian dollar value of $10.56, this field will
+be `"10.56"`. The currency symbol is not included in the string.
+        * **`valueInBaseUnits`**:`integer` (required) - The amount of money in the smallest denomination for the currency, as a
+64-bit integer.  For example, for an Australian dollar value of $10.56,
+this field will be `1056`.
+    * **`roundUp`**:`RoundUpObject` (required, nullable) - Details of how this transaction was rounded-up. If no Round Up was
+applied this field will be `null`.
+      * **`amount`**:`MoneyObject` (required) - The total amount of this Round Up, including any boosts, represented as
+a negative value.
+        * **`currencyCode`**:`string` (required) - The ISO 4217 currency code.
+        * **`value`**:`string` (required) - The amount of money, formatted as a string in the relevant currency.
+For example, for an Australian dollar value of $10.56, this field will
+be `"10.56"`. The currency symbol is not included in the string.
+        * **`valueInBaseUnits`**:`integer` (required) - The amount of money in the smallest denomination for the currency, as a
+64-bit integer.  For example, for an Australian dollar value of $10.56,
+this field will be `1056`.
+      * **`boostPortion`**:`MoneyObject` (required, nullable) - The portion of the Round Up `amount` owing to boosted Round Ups,
+represented as a negative value. If no boost was added to the Round Up
+this field will be `null`.
+        * **`currencyCode`**:`string` (required) - The ISO 4217 currency code.
+        * **`value`**:`string` (required) - The amount of money, formatted as a string in the relevant currency.
+For example, for an Australian dollar value of $10.56, this field will
+be `"10.56"`. The currency symbol is not included in the string.
+        * **`valueInBaseUnits`**:`integer` (required) - The amount of money in the smallest denomination for the currency, as a
+64-bit integer.  For example, for an Australian dollar value of $10.56,
+this field will be `1056`.
+    * **`cashback`**:`CashbackObject` (required, nullable) - If all or part of this transaction was instantly reimbursed in the
+form of cashback, details of the reimbursement.
+      * **`description`**:`string` (required) - A brief description of why this cashback was paid.
+      * **`amount`**:`MoneyObject` (required) - The total amount of cashback paid, represented as a positive value.
+        * **`currencyCode`**:`string` (required) - The ISO 4217 currency code.
+        * **`value`**:`string` (required) - The amount of money, formatted as a string in the relevant currency.
+For example, for an Australian dollar value of $10.56, this field will
+be `"10.56"`. The currency symbol is not included in the string.
+        * **`valueInBaseUnits`**:`integer` (required) - The amount of money in the smallest denomination for the currency, as a
+64-bit integer.  For example, for an Australian dollar value of $10.56,
+this field will be `1056`.
+    * **`amount`**:`MoneyObject` (required) - The amount of this transaction in Australian dollars. For
+transactions that were once `HELD` but are now `SETTLED`, refer to
+the `holdInfo` field for the original `amount` the transaction was
+`HELD` at.
+      * **`currencyCode`**:`string` (required) - The ISO 4217 currency code.
+      * **`value`**:`string` (required) - The amount of money, formatted as a string in the relevant currency.
+For example, for an Australian dollar value of $10.56, this field will
+be `"10.56"`. The currency symbol is not included in the string.
+      * **`valueInBaseUnits`**:`integer` (required) - The amount of money in the smallest denomination for the currency, as a
+64-bit integer.  For example, for an Australian dollar value of $10.56,
+this field will be `1056`.
+    * **`foreignAmount`**:`MoneyObject` (required, nullable) - The foreign currency amount of this transaction. This field will be
+`null` for domestic transactions. The amount was converted to the AUD
+amount reflected in the `amount` of this transaction. Refer to the
+`holdInfo` field for the original `foreignAmount` the transaction was
+`HELD` at.
+      * **`currencyCode`**:`string` (required) - The ISO 4217 currency code.
+      * **`value`**:`string` (required) - The amount of money, formatted as a string in the relevant currency.
+For example, for an Australian dollar value of $10.56, this field will
+be `"10.56"`. The currency symbol is not included in the string.
+      * **`valueInBaseUnits`**:`integer` (required) - The amount of money in the smallest denomination for the currency, as a
+64-bit integer.  For example, for an Australian dollar value of $10.56,
+this field will be `1056`.
+    * **`cardPurchaseMethod`**:`CardPurchaseMethodObject` (required, nullable) - Information about the card used for this transaction, if applicable.
+      * **`method`**:`CardPurchaseMethodEnum` (required) - The type of card purchase.
+        * **Enum values:** [`"BAR_CODE"`, `"OCR"`, `"CARD_PIN"`, `"CARD_DETAILS"`, `"CARD_ON_FILE"`, `"ECOMMERCE"`, `"MAGNETIC_STRIPE"`, `"CONTACTLESS"`]
+      * **`cardNumberSuffix`**:`string` (required, nullable) - The last four digits of the card used for the purchase, if applicable.
+    * **`settledAt`**:`string` (required, nullable) - The date-time at which this transaction settled. This field will be
+`null` for transactions that are currently in the `HELD` status.
+    * **`createdAt`**:`string` (required) - The date-time at which this transaction was first encountered.
+    * **`transactionType`**:`string` (required, nullable) - A description of the transaction method used e.g. Purchase, BPAY Payment.
+    * **`note`**:`NoteObject` (required, nullable) - A customer provided note about the transaction.  Can only be provided by Up High subscribers.
+      * **`text`**:`string` (required) - A text note about the transaction.
+    * **`performingCustomer`**:`CustomerObject` (required, nullable) - The customer who initated the transaction.  For 2Up accounts this could be the customer who's card was used.
+      * **`displayName`**:`string` (required) - The Upname or preferred name of the customer
+    * **`deepLinkURL`**:`string` (required) - A deep link to the transaction receipt screen in-app.
+  * **`relationships`**:`object` (required)
+    * **`account`**:`object` (required)
+      * **`data`**:`object` (required)
+        * **`type`**:`string` (required) - The type of this resource: `accounts`
+        * **`id`**:`string` (required) - The unique identifier of the resource within its type.
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+    * **`transferAccount`**:`object` (required) - If this transaction is a transfer between accounts, this relationship
+will contain the account the transaction went to/came from. The
+`amount` field can be used to determine the direction of the transfer.
+      * **`data`**:`object` (required, nullable)
+        * **`type`**:`string` (required) - The type of this resource: `accounts`
+        * **`id`**:`string` (required) - The unique identifier of the resource within its type.
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+    * **`category`**:`object` (required)
+      * **`data`**:`object` (required, nullable)
+        * **`type`**:`string` (required) - The type of this resource: `categories`
+        * **`id`**:`string` (required) - The unique identifier of the resource within its type.
+      * **`links`**:`object`
+        * **`self`**:`string` (required) - The link to retrieve or modify linkage between this resources and the
+related resource(s) in this relationship.
+        * **`related`**:`string` - The link to retrieve the related resource(s) in this relationship.
+    * **`parentCategory`**:`object` (required)
+      * **`data`**:`object` (required, nullable)
+        * **`type`**:`string` (required) - The type of this resource: `categories`
+        * **`id`**:`string` (required) - The unique identifier of the resource within its type.
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+    * **`tags`**:`object` (required)
+      * **`data`**:`Array of object` (required)
+        * **`type`**:`string` (required) - The type of this resource: `tags`
+        * **`id`**:`string` (required) - The label of the tag, which also acts as the tag’s unique identifier.
+      * **`links`**:`object`
+        * **`self`**:`string` (required) - The link to retrieve or modify linkage between this resources and the
+related resource(s) in this relationship.
+    * **`attachment`**:`object` (required)
+      * **`data`**:`object` (required, nullable)
+        * **`type`**:`string` (required) - The type of this resource: `attachments`
+        * **`id`**:`string` (required) - The unique identifier of the resource within its type.
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+  * **`links`**:`object`
+    * **`self`**:`string` (required) - The canonical link to this resource within the API.
+* **`links`**:`object` (required)
+  * **`prev`**:`string` (required, nullable) - The link to the previous page in the results. If this value is `null`
+there is no previous page.
+  * **`next`**:`string` (required, nullable) - The link to the next page in the results. If this value is `null`
+there is no next page.
+
+---
+
+#### Retrieve transaction (`GET /transactions/{id}`)
+
+Retrieve a specific transaction by providing its unique identifier.
+
+**Path Parameters:**
+- `id` (required) - The unique identifier for the transaction.
+
+**Responses:**
+
+##### HTTP 200
+Successful Response
+
+**Response Schema:**
+* **`data`**:`TransactionResource` (required) - The transaction returned in this response.
+  * **`type`**:`string` (required) - The type of this resource: `transactions`
+  * **`id`**:`string` (required) - The unique identifier for this transaction.
+  * **`attributes`**:`object` (required)
+    * **`status`**:`TransactionStatusEnum` (required) - The current processing status of this transaction, according to
+whether or not this transaction has settled or is still held.
+      * **Enum values:** [`"HELD"`, `"SETTLED"`]
+    * **`rawText`**:`string` (required, nullable) - The original, unprocessed text of the transaction. This is often not
+a perfect indicator of the actual merchant, but it is useful for
+reconciliation purposes in some cases.
+    * **`description`**:`string` (required) - A short description for this transaction. Usually the merchant name
+for purchases.
+    * **`message`**:`string` (required, nullable) - Attached message for this transaction, such as a payment message, or a
+transfer note.
+    * **`isCategorizable`**:`boolean` (required) - Boolean flag set to true on transactions that support the use of
+categories.
+    * **`holdInfo`**:`HoldInfoObject` (required, nullable) - If this transaction is currently in the `HELD` status, or was ever in
+the `HELD` status, the `amount` and `foreignAmount` of the
+transaction while `HELD`.
+      * **`amount`**:`MoneyObject` (required) - The amount of this transaction while in the `HELD` status, in
+Australian dollars.
+        * **`currencyCode`**:`string` (required) - The ISO 4217 currency code.
+        * **`value`**:`string` (required) - The amount of money, formatted as a string in the relevant currency.
+For example, for an Australian dollar value of $10.56, this field will
+be `"10.56"`. The currency symbol is not included in the string.
+        * **`valueInBaseUnits`**:`integer` (required) - The amount of money in the smallest denomination for the currency, as a
+64-bit integer.  For example, for an Australian dollar value of $10.56,
+this field will be `1056`.
+      * **`foreignAmount`**:`MoneyObject` (required, nullable) - The foreign currency amount of this transaction while in the `HELD`
+status. This field will be `null` for domestic transactions. The amount
+was converted to the AUD amount reflected in the `amount` field.
+        * **`currencyCode`**:`string` (required) - The ISO 4217 currency code.
+        * **`value`**:`string` (required) - The amount of money, formatted as a string in the relevant currency.
+For example, for an Australian dollar value of $10.56, this field will
+be `"10.56"`. The currency symbol is not included in the string.
+        * **`valueInBaseUnits`**:`integer` (required) - The amount of money in the smallest denomination for the currency, as a
+64-bit integer.  For example, for an Australian dollar value of $10.56,
+this field will be `1056`.
+    * **`roundUp`**:`RoundUpObject` (required, nullable) - Details of how this transaction was rounded-up. If no Round Up was
+applied this field will be `null`.
+      * **`amount`**:`MoneyObject` (required) - The total amount of this Round Up, including any boosts, represented as
+a negative value.
+        * **`currencyCode`**:`string` (required) - The ISO 4217 currency code.
+        * **`value`**:`string` (required) - The amount of money, formatted as a string in the relevant currency.
+For example, for an Australian dollar value of $10.56, this field will
+be `"10.56"`. The currency symbol is not included in the string.
+        * **`valueInBaseUnits`**:`integer` (required) - The amount of money in the smallest denomination for the currency, as a
+64-bit integer.  For example, for an Australian dollar value of $10.56,
+this field will be `1056`.
+      * **`boostPortion`**:`MoneyObject` (required, nullable) - The portion of the Round Up `amount` owing to boosted Round Ups,
+represented as a negative value. If no boost was added to the Round Up
+this field will be `null`.
+        * **`currencyCode`**:`string` (required) - The ISO 4217 currency code.
+        * **`value`**:`string` (required) - The amount of money, formatted as a string in the relevant currency.
+For example, for an Australian dollar value of $10.56, this field will
+be `"10.56"`. The currency symbol is not included in the string.
+        * **`valueInBaseUnits`**:`integer` (required) - The amount of money in the smallest denomination for the currency, as a
+64-bit integer.  For example, for an Australian dollar value of $10.56,
+this field will be `1056`.
+    * **`cashback`**:`CashbackObject` (required, nullable) - If all or part of this transaction was instantly reimbursed in the
+form of cashback, details of the reimbursement.
+      * **`description`**:`string` (required) - A brief description of why this cashback was paid.
+      * **`amount`**:`MoneyObject` (required) - The total amount of cashback paid, represented as a positive value.
+        * **`currencyCode`**:`string` (required) - The ISO 4217 currency code.
+        * **`value`**:`string` (required) - The amount of money, formatted as a string in the relevant currency.
+For example, for an Australian dollar value of $10.56, this field will
+be `"10.56"`. The currency symbol is not included in the string.
+        * **`valueInBaseUnits`**:`integer` (required) - The amount of money in the smallest denomination for the currency, as a
+64-bit integer.  For example, for an Australian dollar value of $10.56,
+this field will be `1056`.
+    * **`amount`**:`MoneyObject` (required) - The amount of this transaction in Australian dollars. For
+transactions that were once `HELD` but are now `SETTLED`, refer to
+the `holdInfo` field for the original `amount` the transaction was
+`HELD` at.
+      * **`currencyCode`**:`string` (required) - The ISO 4217 currency code.
+      * **`value`**:`string` (required) - The amount of money, formatted as a string in the relevant currency.
+For example, for an Australian dollar value of $10.56, this field will
+be `"10.56"`. The currency symbol is not included in the string.
+      * **`valueInBaseUnits`**:`integer` (required) - The amount of money in the smallest denomination for the currency, as a
+64-bit integer.  For example, for an Australian dollar value of $10.56,
+this field will be `1056`.
+    * **`foreignAmount`**:`MoneyObject` (required, nullable) - The foreign currency amount of this transaction. This field will be
+`null` for domestic transactions. The amount was converted to the AUD
+amount reflected in the `amount` of this transaction. Refer to the
+`holdInfo` field for the original `foreignAmount` the transaction was
+`HELD` at.
+      * **`currencyCode`**:`string` (required) - The ISO 4217 currency code.
+      * **`value`**:`string` (required) - The amount of money, formatted as a string in the relevant currency.
+For example, for an Australian dollar value of $10.56, this field will
+be `"10.56"`. The currency symbol is not included in the string.
+      * **`valueInBaseUnits`**:`integer` (required) - The amount of money in the smallest denomination for the currency, as a
+64-bit integer.  For example, for an Australian dollar value of $10.56,
+this field will be `1056`.
+    * **`cardPurchaseMethod`**:`CardPurchaseMethodObject` (required, nullable) - Information about the card used for this transaction, if applicable.
+      * **`method`**:`CardPurchaseMethodEnum` (required) - The type of card purchase.
+        * **Enum values:** [`"BAR_CODE"`, `"OCR"`, `"CARD_PIN"`, `"CARD_DETAILS"`, `"CARD_ON_FILE"`, `"ECOMMERCE"`, `"MAGNETIC_STRIPE"`, `"CONTACTLESS"`]
+      * **`cardNumberSuffix`**:`string` (required, nullable) - The last four digits of the card used for the purchase, if applicable.
+    * **`settledAt`**:`string` (required, nullable) - The date-time at which this transaction settled. This field will be
+`null` for transactions that are currently in the `HELD` status.
+    * **`createdAt`**:`string` (required) - The date-time at which this transaction was first encountered.
+    * **`transactionType`**:`string` (required, nullable) - A description of the transaction method used e.g. Purchase, BPAY Payment.
+    * **`note`**:`NoteObject` (required, nullable) - A customer provided note about the transaction.  Can only be provided by Up High subscribers.
+      * **`text`**:`string` (required) - A text note about the transaction.
+    * **`performingCustomer`**:`CustomerObject` (required, nullable) - The customer who initated the transaction.  For 2Up accounts this could be the customer who's card was used.
+      * **`displayName`**:`string` (required) - The Upname or preferred name of the customer
+    * **`deepLinkURL`**:`string` (required) - A deep link to the transaction receipt screen in-app.
+  * **`relationships`**:`object` (required)
+    * **`account`**:`object` (required)
+      * **`data`**:`object` (required)
+        * **`type`**:`string` (required) - The type of this resource: `accounts`
+        * **`id`**:`string` (required) - The unique identifier of the resource within its type.
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+    * **`transferAccount`**:`object` (required) - If this transaction is a transfer between accounts, this relationship
+will contain the account the transaction went to/came from. The
+`amount` field can be used to determine the direction of the transfer.
+      * **`data`**:`object` (required, nullable)
+        * **`type`**:`string` (required) - The type of this resource: `accounts`
+        * **`id`**:`string` (required) - The unique identifier of the resource within its type.
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+    * **`category`**:`object` (required)
+      * **`data`**:`object` (required, nullable)
+        * **`type`**:`string` (required) - The type of this resource: `categories`
+        * **`id`**:`string` (required) - The unique identifier of the resource within its type.
+      * **`links`**:`object`
+        * **`self`**:`string` (required) - The link to retrieve or modify linkage between this resources and the
+related resource(s) in this relationship.
+        * **`related`**:`string` - The link to retrieve the related resource(s) in this relationship.
+    * **`parentCategory`**:`object` (required)
+      * **`data`**:`object` (required, nullable)
+        * **`type`**:`string` (required) - The type of this resource: `categories`
+        * **`id`**:`string` (required) - The unique identifier of the resource within its type.
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+    * **`tags`**:`object` (required)
+      * **`data`**:`Array of object` (required)
+        * **`type`**:`string` (required) - The type of this resource: `tags`
+        * **`id`**:`string` (required) - The label of the tag, which also acts as the tag’s unique identifier.
+      * **`links`**:`object`
+        * **`self`**:`string` (required) - The link to retrieve or modify linkage between this resources and the
+related resource(s) in this relationship.
+    * **`attachment`**:`object` (required)
+      * **`data`**:`object` (required, nullable)
+        * **`type`**:`string` (required) - The type of this resource: `attachments`
+        * **`id`**:`string` (required) - The unique identifier of the resource within its type.
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+  * **`links`**:`object`
+    * **`self`**:`string` (required) - The canonical link to this resource within the API.
+
+---
+
+#### List transactions by account (`GET /accounts/{accountId}/transactions`)
+
+Retrieve a list of all transactions for a specific account. The returned
+list is [paginated](#pagination) and can be scrolled by following the
+`next` and `prev` links where present. To narrow the results to a
+specific date range pass one or both of `filter[since]` and
+`filter[until]` in the query string. These filter parameters
+**should not** be used for pagination. Results are ordered newest first
+to oldest last.
+
+**Path Parameters:**
+- `accountId` (required) - The unique identifier for the account.
+
+**Query Parameters:**
+- `page[size]` - The number of records to return in each page.
+- `filter[status]` - The transaction status for which to return records. This
+can be used to filter `HELD` transactions from those
+that are `SETTLED`.
+- `filter[since]` - The start date-time from which to return records,
+formatted according to rfc-3339. Not to be used for
+pagination purposes.
+- `filter[until]` - The end date-time up to which to return records,
+formatted according to rfc-3339. Not to be used for
+pagination purposes.
+- `filter[category]` - The category identifier for which to filter transactions.
+Both parent and child categories can be filtered through
+this parameter. Providing an invalid category identifier
+results in a `404` response.
+- `filter[tag]` - A transaction tag to filter for which to return records.
+If the tag does not exist, zero records are returned and
+a success response is given.
+
+**Responses:**
+
+##### HTTP 200
+Successful Response
+
+**Response Schema:**
+* **`data`**:`Array of TransactionResource` (required) - The list of transactions returned in this response.
+  * **`type`**:`string` (required) - The type of this resource: `transactions`
+  * **`id`**:`string` (required) - The unique identifier for this transaction.
+  * **`attributes`**:`object` (required)
+    * **`status`**:`TransactionStatusEnum` (required) - The current processing status of this transaction, according to
+whether or not this transaction has settled or is still held.
+      * **Enum values:** [`"HELD"`, `"SETTLED"`]
+    * **`rawText`**:`string` (required, nullable) - The original, unprocessed text of the transaction. This is often not
+a perfect indicator of the actual merchant, but it is useful for
+reconciliation purposes in some cases.
+    * **`description`**:`string` (required) - A short description for this transaction. Usually the merchant name
+for purchases.
+    * **`message`**:`string` (required, nullable) - Attached message for this transaction, such as a payment message, or a
+transfer note.
+    * **`isCategorizable`**:`boolean` (required) - Boolean flag set to true on transactions that support the use of
+categories.
+    * **`holdInfo`**:`HoldInfoObject` (required, nullable) - If this transaction is currently in the `HELD` status, or was ever in
+the `HELD` status, the `amount` and `foreignAmount` of the
+transaction while `HELD`.
+      * **`amount`**:`MoneyObject` (required) - The amount of this transaction while in the `HELD` status, in
+Australian dollars.
+        * **`currencyCode`**:`string` (required) - The ISO 4217 currency code.
+        * **`value`**:`string` (required) - The amount of money, formatted as a string in the relevant currency.
+For example, for an Australian dollar value of $10.56, this field will
+be `"10.56"`. The currency symbol is not included in the string.
+        * **`valueInBaseUnits`**:`integer` (required) - The amount of money in the smallest denomination for the currency, as a
+64-bit integer.  For example, for an Australian dollar value of $10.56,
+this field will be `1056`.
+      * **`foreignAmount`**:`MoneyObject` (required, nullable) - The foreign currency amount of this transaction while in the `HELD`
+status. This field will be `null` for domestic transactions. The amount
+was converted to the AUD amount reflected in the `amount` field.
+        * **`currencyCode`**:`string` (required) - The ISO 4217 currency code.
+        * **`value`**:`string` (required) - The amount of money, formatted as a string in the relevant currency.
+For example, for an Australian dollar value of $10.56, this field will
+be `"10.56"`. The currency symbol is not included in the string.
+        * **`valueInBaseUnits`**:`integer` (required) - The amount of money in the smallest denomination for the currency, as a
+64-bit integer.  For example, for an Australian dollar value of $10.56,
+this field will be `1056`.
+    * **`roundUp`**:`RoundUpObject` (required, nullable) - Details of how this transaction was rounded-up. If no Round Up was
+applied this field will be `null`.
+      * **`amount`**:`MoneyObject` (required) - The total amount of this Round Up, including any boosts, represented as
+a negative value.
+        * **`currencyCode`**:`string` (required) - The ISO 4217 currency code.
+        * **`value`**:`string` (required) - The amount of money, formatted as a string in the relevant currency.
+For example, for an Australian dollar value of $10.56, this field will
+be `"10.56"`. The currency symbol is not included in the string.
+        * **`valueInBaseUnits`**:`integer` (required) - The amount of money in the smallest denomination for the currency, as a
+64-bit integer.  For example, for an Australian dollar value of $10.56,
+this field will be `1056`.
+      * **`boostPortion`**:`MoneyObject` (required, nullable) - The portion of the Round Up `amount` owing to boosted Round Ups,
+represented as a negative value. If no boost was added to the Round Up
+this field will be `null`.
+        * **`currencyCode`**:`string` (required) - The ISO 4217 currency code.
+        * **`value`**:`string` (required) - The amount of money, formatted as a string in the relevant currency.
+For example, for an Australian dollar value of $10.56, this field will
+be `"10.56"`. The currency symbol is not included in the string.
+        * **`valueInBaseUnits`**:`integer` (required) - The amount of money in the smallest denomination for the currency, as a
+64-bit integer.  For example, for an Australian dollar value of $10.56,
+this field will be `1056`.
+    * **`cashback`**:`CashbackObject` (required, nullable) - If all or part of this transaction was instantly reimbursed in the
+form of cashback, details of the reimbursement.
+      * **`description`**:`string` (required) - A brief description of why this cashback was paid.
+      * **`amount`**:`MoneyObject` (required) - The total amount of cashback paid, represented as a positive value.
+        * **`currencyCode`**:`string` (required) - The ISO 4217 currency code.
+        * **`value`**:`string` (required) - The amount of money, formatted as a string in the relevant currency.
+For example, for an Australian dollar value of $10.56, this field will
+be `"10.56"`. The currency symbol is not included in the string.
+        * **`valueInBaseUnits`**:`integer` (required) - The amount of money in the smallest denomination for the currency, as a
+64-bit integer.  For example, for an Australian dollar value of $10.56,
+this field will be `1056`.
+    * **`amount`**:`MoneyObject` (required) - The amount of this transaction in Australian dollars. For
+transactions that were once `HELD` but are now `SETTLED`, refer to
+the `holdInfo` field for the original `amount` the transaction was
+`HELD` at.
+      * **`currencyCode`**:`string` (required) - The ISO 4217 currency code.
+      * **`value`**:`string` (required) - The amount of money, formatted as a string in the relevant currency.
+For example, for an Australian dollar value of $10.56, this field will
+be `"10.56"`. The currency symbol is not included in the string.
+      * **`valueInBaseUnits`**:`integer` (required) - The amount of money in the smallest denomination for the currency, as a
+64-bit integer.  For example, for an Australian dollar value of $10.56,
+this field will be `1056`.
+    * **`foreignAmount`**:`MoneyObject` (required, nullable) - The foreign currency amount of this transaction. This field will be
+`null` for domestic transactions. The amount was converted to the AUD
+amount reflected in the `amount` of this transaction. Refer to the
+`holdInfo` field for the original `foreignAmount` the transaction was
+`HELD` at.
+      * **`currencyCode`**:`string` (required) - The ISO 4217 currency code.
+      * **`value`**:`string` (required) - The amount of money, formatted as a string in the relevant currency.
+For example, for an Australian dollar value of $10.56, this field will
+be `"10.56"`. The currency symbol is not included in the string.
+      * **`valueInBaseUnits`**:`integer` (required) - The amount of money in the smallest denomination for the currency, as a
+64-bit integer.  For example, for an Australian dollar value of $10.56,
+this field will be `1056`.
+    * **`cardPurchaseMethod`**:`CardPurchaseMethodObject` (required, nullable) - Information about the card used for this transaction, if applicable.
+      * **`method`**:`CardPurchaseMethodEnum` (required) - The type of card purchase.
+        * **Enum values:** [`"BAR_CODE"`, `"OCR"`, `"CARD_PIN"`, `"CARD_DETAILS"`, `"CARD_ON_FILE"`, `"ECOMMERCE"`, `"MAGNETIC_STRIPE"`, `"CONTACTLESS"`]
+      * **`cardNumberSuffix`**:`string` (required, nullable) - The last four digits of the card used for the purchase, if applicable.
+    * **`settledAt`**:`string` (required, nullable) - The date-time at which this transaction settled. This field will be
+`null` for transactions that are currently in the `HELD` status.
+    * **`createdAt`**:`string` (required) - The date-time at which this transaction was first encountered.
+    * **`transactionType`**:`string` (required, nullable) - A description of the transaction method used e.g. Purchase, BPAY Payment.
+    * **`note`**:`NoteObject` (required, nullable) - A customer provided note about the transaction.  Can only be provided by Up High subscribers.
+      * **`text`**:`string` (required) - A text note about the transaction.
+    * **`performingCustomer`**:`CustomerObject` (required, nullable) - The customer who initated the transaction.  For 2Up accounts this could be the customer who's card was used.
+      * **`displayName`**:`string` (required) - The Upname or preferred name of the customer
+    * **`deepLinkURL`**:`string` (required) - A deep link to the transaction receipt screen in-app.
+  * **`relationships`**:`object` (required)
+    * **`account`**:`object` (required)
+      * **`data`**:`object` (required)
+        * **`type`**:`string` (required) - The type of this resource: `accounts`
+        * **`id`**:`string` (required) - The unique identifier of the resource within its type.
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+    * **`transferAccount`**:`object` (required) - If this transaction is a transfer between accounts, this relationship
+will contain the account the transaction went to/came from. The
+`amount` field can be used to determine the direction of the transfer.
+      * **`data`**:`object` (required, nullable)
+        * **`type`**:`string` (required) - The type of this resource: `accounts`
+        * **`id`**:`string` (required) - The unique identifier of the resource within its type.
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+    * **`category`**:`object` (required)
+      * **`data`**:`object` (required, nullable)
+        * **`type`**:`string` (required) - The type of this resource: `categories`
+        * **`id`**:`string` (required) - The unique identifier of the resource within its type.
+      * **`links`**:`object`
+        * **`self`**:`string` (required) - The link to retrieve or modify linkage between this resources and the
+related resource(s) in this relationship.
+        * **`related`**:`string` - The link to retrieve the related resource(s) in this relationship.
+    * **`parentCategory`**:`object` (required)
+      * **`data`**:`object` (required, nullable)
+        * **`type`**:`string` (required) - The type of this resource: `categories`
+        * **`id`**:`string` (required) - The unique identifier of the resource within its type.
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+    * **`tags`**:`object` (required)
+      * **`data`**:`Array of object` (required)
+        * **`type`**:`string` (required) - The type of this resource: `tags`
+        * **`id`**:`string` (required) - The label of the tag, which also acts as the tag’s unique identifier.
+      * **`links`**:`object`
+        * **`self`**:`string` (required) - The link to retrieve or modify linkage between this resources and the
+related resource(s) in this relationship.
+    * **`attachment`**:`object` (required)
+      * **`data`**:`object` (required, nullable)
+        * **`type`**:`string` (required) - The type of this resource: `attachments`
+        * **`id`**:`string` (required) - The unique identifier of the resource within its type.
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+  * **`links`**:`object`
+    * **`self`**:`string` (required) - The canonical link to this resource within the API.
+* **`links`**:`object` (required)
+  * **`prev`**:`string` (required, nullable) - The link to the previous page in the results. If this value is `null`
+there is no previous page.
+  * **`next`**:`string` (required, nullable) - The link to the next page in the results. If this value is `null`
+there is no next page.
+
+---
+
+### Section: Utility endpoints
+Some endpoints exist not to expose data, but to test the API
+itself. Currently there is only one endpoint in this group: ping!
+
+#### Ping (`GET /util/ping`)
+
+Make a basic ping request to the API. This is useful to verify that
+authentication is functioning correctly. On authentication success an
+HTTP `200` status is returned. On failure an HTTP `401` error response
+is returned.
+
+**Responses:**
+
+##### HTTP 200
+Successful Response
+
+**Response Schema:**
+* **`meta`**:`object` (required)
+  * **`id`**:`string` (required) - The unique identifier of the authenticated customer.
+  * **`statusEmoji`**:`string` (required) - A cute emoji that represents the response status.
+
+##### HTTP 401
+Not Authorized
+
+**Response Schema:**
+* **`errors`**:`Array of ErrorObject` (required) - The list of errors returned in this response.
+  * **`status`**:`string` (required) - The HTTP status code associated with this error. This can also be
+obtained from the response headers. The status indicates the broad type
+of error according to HTTP semantics.
+  * **`title`**:`string` (required) - A short description of this error. This should be stable across
+multiple occurrences of this type of error and typically expands on the
+reason for the status code.
+  * **`detail`**:`string` (required) - A detailed description of this error. This should be considered unique
+to individual occurrences of an error and subject to change. It is
+useful for debugging purposes.
+  * **`source`**:`object` - If applicable, location in the request that this error relates to. This
+may be a parameter in the query string, or a an attribute in the
+request body.
+    * **`parameter`**:`string` - If this error relates to a query parameter, the name of the
+parameter.
+    * **`pointer`**:`string` - If this error relates to an attribute in the request body, a
+rfc-6901 JSON pointer to the attribute.
+
+---
+
+### Section: Webhooks
+Webhooks provide a mechanism for a configured URL to receive
+events when transaction activity occurs on Up. You can think of
+webhooks as being like push notifications for your server-side
+application.
+
+#### List webhooks (`GET /webhooks`)
+
+Retrieve a list of configured webhooks. The returned list is
+[paginated](#pagination) and can be scrolled by following the `next`
+and `prev` links where present. Results are ordered oldest first to
+newest last.
+
+**Query Parameters:**
+- `page[size]` - The number of records to return in each page.
+
+**Responses:**
+
+##### HTTP 200
+Successful Response
+
+**Response Schema:**
+* **`data`**:`Array of WebhookResource` (required) - The list of webhooks returned in this response.
+  * **`type`**:`string` (required) - The type of this resource: `webhooks`
+  * **`id`**:`string` (required) - The unique identifier for this webhook.
+  * **`attributes`**:`object` (required)
+    * **`url`**:`string` (required) - The URL that this webhook is configured to `POST` events to.
+    * **`description`**:`string` (required, nullable) - An optional description that was provided at the time the webhook was
+created.
+    * **`secretKey`**:`string` - A shared secret key used to sign all webhook events sent to the
+configured webhook URL. This field is returned only once, upon the
+initial creation of the webhook. If lost, create a new webhook and
+delete this webhook.
+
+The webhook URL receives a request with a
+`X-Up-Authenticity-Signature` header, which is the SHA-256 HMAC of
+the entire raw request body signed using this `secretKey`. It is
+advised to compute and check this signature to verify the
+authenticity of requests sent to the webhook URL. See
+[Handling webhook events](#callback_post_webhookURL) for full
+details.
+    * **`createdAt`**:`string` (required) - The date-time at which this webhook was created.
+  * **`relationships`**:`object` (required)
+    * **`logs`**:`object` (required)
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+  * **`links`**:`object`
+    * **`self`**:`string` (required) - The canonical link to this resource within the API.
+* **`links`**:`object` (required)
+  * **`prev`**:`string` (required, nullable) - The link to the previous page in the results. If this value is `null`
+there is no previous page.
+  * **`next`**:`string` (required, nullable) - The link to the next page in the results. If this value is `null`
+there is no next page.
+
+---
+
+#### Create webhook (`POST /webhooks`)
+
+Create a new webhook with a given URL. The URL will receive webhook
+events as JSON-encoded `POST` requests. The URL must respond with a HTTP
+`200` status on success.
+
+There is currently a limit of 10 webhooks at any given time. Once this
+limit is reached, existing webhooks will need to be deleted before new
+webhooks can be created.
+
+Event delivery is retried with exponential backoff if the URL is
+unreachable or it does not respond with a `200` status. The response
+includes a `secretKey` attribute, which is used to sign requests sent to
+the webhook URL. It will not be returned from any other endpoints within
+the Up API. If the `secretKey` is lost, simply create a new webhook with
+the same URL, capture its `secretKey` and then delete the original
+webhook. See [Handling webhook events](#callback_post_webhookURL) for
+details on how to process webhook events.
+
+It is probably a good idea to test the webhook by
+[sending it a `PING` event](#post_webhooks_webhookId_ping) after creating
+it.
+
+**Request Body Schema:**
+* **`data`**:`WebhookInputResource` (required) - The webhook resource to create.
+  * **`attributes`**:`object` (required)
+    * **`url`**:`string` (required) - The URL that this webhook should post events to. This must be a valid
+HTTP or HTTPS URL that does not exceed 300 characters in length.
+    * **`description`**:`string` (nullable) - An optional description for this webhook, up to 64 characters in
+length.
+
+**Responses:**
+
+##### HTTP 201
+Created
+
+**Response Schema:**
+* **`data`**:`WebhookResource` (required) - The webhook that was created.
+  * **`type`**:`string` (required) - The type of this resource: `webhooks`
+  * **`id`**:`string` (required) - The unique identifier for this webhook.
+  * **`attributes`**:`object` (required)
+    * **`url`**:`string` (required) - The URL that this webhook is configured to `POST` events to.
+    * **`description`**:`string` (required, nullable) - An optional description that was provided at the time the webhook was
+created.
+    * **`secretKey`**:`string` - A shared secret key used to sign all webhook events sent to the
+configured webhook URL. This field is returned only once, upon the
+initial creation of the webhook. If lost, create a new webhook and
+delete this webhook.
+
+The webhook URL receives a request with a
+`X-Up-Authenticity-Signature` header, which is the SHA-256 HMAC of
+the entire raw request body signed using this `secretKey`. It is
+advised to compute and check this signature to verify the
+authenticity of requests sent to the webhook URL. See
+[Handling webhook events](#callback_post_webhookURL) for full
+details.
+    * **`createdAt`**:`string` (required) - The date-time at which this webhook was created.
+  * **`relationships`**:`object` (required)
+    * **`logs`**:`object` (required)
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+  * **`links`**:`object`
+    * **`self`**:`string` (required) - The canonical link to this resource within the API.
+
+---
+
+#### Retrieve webhook (`GET /webhooks/{id}`)
+
+Retrieve a specific webhook by providing its unique identifier.
+
+**Path Parameters:**
+- `id` (required) - The unique identifier for the webhook.
+
+**Responses:**
+
+##### HTTP 200
+Successful Response
+
+**Response Schema:**
+* **`data`**:`WebhookResource` (required) - The webhook returned in this response.
+  * **`type`**:`string` (required) - The type of this resource: `webhooks`
+  * **`id`**:`string` (required) - The unique identifier for this webhook.
+  * **`attributes`**:`object` (required)
+    * **`url`**:`string` (required) - The URL that this webhook is configured to `POST` events to.
+    * **`description`**:`string` (required, nullable) - An optional description that was provided at the time the webhook was
+created.
+    * **`secretKey`**:`string` - A shared secret key used to sign all webhook events sent to the
+configured webhook URL. This field is returned only once, upon the
+initial creation of the webhook. If lost, create a new webhook and
+delete this webhook.
+
+The webhook URL receives a request with a
+`X-Up-Authenticity-Signature` header, which is the SHA-256 HMAC of
+the entire raw request body signed using this `secretKey`. It is
+advised to compute and check this signature to verify the
+authenticity of requests sent to the webhook URL. See
+[Handling webhook events](#callback_post_webhookURL) for full
+details.
+    * **`createdAt`**:`string` (required) - The date-time at which this webhook was created.
+  * **`relationships`**:`object` (required)
+    * **`logs`**:`object` (required)
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+  * **`links`**:`object`
+    * **`self`**:`string` (required) - The canonical link to this resource within the API.
+
+---
+
+#### Delete webhook (`DELETE /webhooks/{id}`)
+
+Delete a specific webhook by providing its unique identifier. Once
+deleted, webhook events will no longer be sent to the configured URL.
+
+**Path Parameters:**
+- `id` (required) - The unique identifier for the webhook.
+
+**Responses:**
+
+##### HTTP 204
+Deleted
+
+---
+
+#### Ping webhook (`POST /webhooks/{webhookId}/ping`)
+
+Send a `PING` event to a webhook by providing its unique identifier.
+This is useful for testing and debugging purposes. The event is delivered
+asynchronously and its data is returned in the response to this request.
+
+**Path Parameters:**
+- `webhookId` (required) - The unique identifier for the webhook.
+
+**Responses:**
+
+##### HTTP 201
+Successful response
+
+**Response Schema:**
+* **`data`**:`WebhookEventResource` (required) - The webhook event data sent to the subscribed webhook.
+  * **`type`**:`string` (required) - The type of this resource: `webhook-events`
+  * **`id`**:`string` (required) - The unique identifier for this event. This will remain constant across
+delivery retries.
+  * **`attributes`**:`object` (required)
+    * **`eventType`**:`WebhookEventTypeEnum` (required) - The type of this event. This can be used to determine what action to
+take in response to the event.
+      * **Enum values:** [`"TRANSACTION_CREATED"`, `"TRANSACTION_SETTLED"`, `"TRANSACTION_DELETED"`, `"PING"`]
+    * **`createdAt`**:`string` (required) - The date-time at which this event was generated.
+  * **`relationships`**:`object` (required)
+    * **`webhook`**:`object` (required)
+      * **`data`**:`object` (required)
+        * **`type`**:`string` (required) - The type of this resource: `webhooks`
+        * **`id`**:`string` (required) - The unique identifier of the resource within its type.
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+    * **`transaction`**:`object`
+      * **`data`**:`object` (required)
+        * **`type`**:`string` (required) - The type of this resource: `transactions`
+        * **`id`**:`string` (required) - The unique identifier of the resource within its type.
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+
+---
+
+#### List webhook logs (`GET /webhooks/{webhookId}/logs`)
+
+Retrieve a list of delivery logs for a webhook by providing its unique
+identifier. This is useful for analysis and debugging purposes. The
+returned list is [paginated](#pagination) and can be scrolled by
+following the `next` and `prev` links where present. Results are ordered
+newest first to oldest last. Logs may be automatically purged after a
+period of time.
+
+**Path Parameters:**
+- `webhookId` (required) - The unique identifier for the webhook.
+
+**Query Parameters:**
+- `page[size]` - The number of records to return in each page.
+
+**Responses:**
+
+##### HTTP 200
+Successful response
+
+**Response Schema:**
+* **`data`**:`Array of WebhookDeliveryLogResource` (required) - The list of delivery logs returned in this response.
+  * **`type`**:`string` (required) - The type of this resource: `webhook-delivery-logs`
+  * **`id`**:`string` (required) - The unique identifier for this log entry.
+  * **`attributes`**:`object` (required)
+    * **`request`**:`object` (required) - Information about the request that was sent to the webhook URL.
+      * **`body`**:`string` (required) - The payload that was sent in the request body.
+    * **`response`**:`object` (required, nullable) - Information about the response that was received from the webhook URL.
+      * **`statusCode`**:`integer` (required) - The HTTP status code received in the response.
+      * **`body`**:`string` (required) - The payload that was received in the response body.
+    * **`deliveryStatus`**:`WebhookDeliveryStatusEnum` (required) - The success or failure status of this delivery attempt.
+      * **Enum values:** [`"DELIVERED"`, `"UNDELIVERABLE"`, `"BAD_RESPONSE_CODE"`]
+    * **`createdAt`**:`string` (required) - The date-time at which this log entry was created.
+  * **`relationships`**:`object` (required)
+    * **`webhookEvent`**:`object` (required)
+      * **`data`**:`object` (required)
+        * **`type`**:`string` (required) - The type of this resource: `webhook-events`
+        * **`id`**:`string` (required) - The unique identifier of the resource within its type.
+* **`links`**:`object` (required)
+  * **`prev`**:`string` (required, nullable) - The link to the previous page in the results. If this value is `null`
+there is no previous page.
+  * **`next`**:`string` (required, nullable) - The link to the next page in the results. If this value is `null`
+there is no next page.
+
+---
+
+#### [Webhook Callback] Handling webhook events (`POST {webhookURL}`)
+
+Once you have created a webhook in the Up API, events are sent to the
+webhook’s configured URL as JSON-encoded `POST` requests. The webhook
+URL must respond with a HTTP `200` status on success.
+
+It is important that the URL responds in a timely manner. If the URL
+takes too long to respond (currently 30s), the request will be timed
+out. For this reason it is strongly advised to avoid any heavy
+processing before a response has been returned from the URL. A common
+solution to this problem is to use a message broker such as RabbitMQ
+to do the work asynchronously.
+
+Event delivery is retried with exponential backoff in the case of any
+non-`200` response status, if the URL is unreachable, or if the request
+is timed out.
+
+Refer to the `eventType` attribute in order to determine what course of
+action to take when handling the event. The following event types are
+currently sent:
+
+**`PING`**
+
+Manually triggered by calls to the webhook `ping` endpoint. Used for
+testing and debugging purposes.
+
+**`TRANSACTION_CREATED`**
+
+Triggered whenever a new transaction is created in Up. This event
+includes a `transaction` relationship that provides the unique
+identifier for the transaction and a link to the transaction within the
+Up API. This link should be used to retrieve the complete transaction
+data.
+
+**`TRANSACTION_SETTLED`**
+
+Triggered whenever a transaction transitions from the `HELD` status to
+the `SETTLED` status. This event includes a `transaction` relationship
+that provides the unique identifier for the transaction and a link to
+the transaction within the Up API. This link should be used to retrieve
+the complete transaction data.
+
+Due to external factors in banking processes, on rare occasions this
+event may not be triggered. Separate `TRANSACTION_DELETED` and
+`TRANSACTION_CREATED` events will be received in its place.
+
+**`TRANSACTION_DELETED`**
+
+Triggered whenever a `HELD` transaction is deleted from Up. This
+generally occurs for example when a hotel deposit is returned. This
+event includes a `transaction` relationship that provides the unique
+identifier for the transaction, however no link is provided to the
+transaction within the Up API as it no longer exists.
+
+## Securing Webhook Event Handlers
+
+Incoming webhook event requests include a `X-Up-Authenticity-Signature`
+header, which can be used to verify that the event was sent by Up.
+Verification of the signature requires knowledge of the shared
+`secretKey` that was returned upon creation of the webhook. This key is
+known only to your application and to Up.
+
+The verification process involves:
+
+1. Taking the raw, unparsed webhook event request body.
+2. Computing the SHA-256 HMAC signature of the request body, using the
+   shared `secretKey`.
+3. Comparing the computed HMAC signature with the value of the
+   `X-Up-Authenticity-Signature` header.
+
+If the computed SHA-256 HMAC signature matches the
+`X-Up-Authenticity-Signature` header, the request is valid.
+
+A few language-specific examples follow.
+
+**Ruby**:
+
+This example uses the Ruby on Rails framework.
+
+```ruby
+require 'openssl'
+
+def handle_webhook_event
+  received_signature =
+    request.headers['X-Up-Authenticity-Signature']
+
+  signature = OpenSSL::HMAC.hexdigest(
+    'SHA256',
+    secret_key,
+    request.raw_post,
+  )
+
+  if Rack::Utils.secure_compare(received_signature, signature)
+    # Process webhook event
+  end
+end
+```
+
+**PHP**:
+
+This example uses the Laravel framework.
+
+```php
+public function handleWebhookEvent(Request $request) {
+    $received_signature = $request->header(
+        'X-Up-Authenticity-Signature',
+        ''
+    );
+    $raw_body = $request->getContent();
+    $signature = hash_hmac('sha256', $raw_body, $this->secretKey);
+
+    if (hash_equals($signature, $received_signature)) {
+        // Process webhook event
+    }
+}
+```
+
+**Go**:
+
+This example is in plain Go.
+
+```go
+import (
+    "crypto/hmac"
+    "crypto/sha256"
+    "encoding/hex"
+    "io"
+    "net/http"
+)
+
+func handleWebhookEvent(w http.ResponseWriter, r *http.Request) {
+    receivedSignature, _ := hex.DecodeString(
+        r.Header.Get("X-Up-Authenticity-Signature"),
+    )
+
+    mac := hmac.New(sha256.New, secretKey)
+    io.Copy(mac, r.Body)
+    signature := mac.Sum(nil)
+
+    if hmac.Equal(signature, receivedSignature)
+        // Process webhook event
+    }
+}
+```
+
+If the `secretKey` for a webhook is lost, simply create a new webhook
+with the same URL, capture the returned `secretKey` and delete the
+original webhook.
+
+**Headers:**
+- `X-Up-Authenticity-Signature` - The SHA-256 HMAC signature of the raw request body, signed using
+the `secretKey` of the webhook.
+
+**Request Body Schema:**
+* **`data`**:`WebhookEventResource` (required) - The webhook event data sent to the subscribed webhook.
+  * **`type`**:`string` (required) - The type of this resource: `webhook-events`
+  * **`id`**:`string` (required) - The unique identifier for this event. This will remain constant across
+delivery retries.
+  * **`attributes`**:`object` (required)
+    * **`eventType`**:`WebhookEventTypeEnum` (required) - The type of this event. This can be used to determine what action to
+take in response to the event.
+      * **Enum values:** [`"TRANSACTION_CREATED"`, `"TRANSACTION_SETTLED"`, `"TRANSACTION_DELETED"`, `"PING"`]
+    * **`createdAt`**:`string` (required) - The date-time at which this event was generated.
+  * **`relationships`**:`object` (required)
+    * **`webhook`**:`object` (required)
+      * **`data`**:`object` (required)
+        * **`type`**:`string` (required) - The type of this resource: `webhooks`
+        * **`id`**:`string` (required) - The unique identifier of the resource within its type.
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+    * **`transaction`**:`object`
+      * **`data`**:`object` (required)
+        * **`type`**:`string` (required) - The type of this resource: `transactions`
+        * **`id`**:`string` (required) - The unique identifier of the resource within its type.
+      * **`links`**:`object`
+        * **`related`**:`string` (required) - The link to retrieve the related resource(s) in this relationship.
+
+**Responses:**
+
+##### HTTP 200
+Successful Response
+
+---
+
