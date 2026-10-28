@@ -282,7 +282,7 @@
 
 <script>
 (() => {
-  const APPLY_TASK = "trig_017ZMqsTDUngZ1bFwjbiTW2Z"; // scheduled task that applies queued changes (also runs hourly)
+  const APPLY_TASK = "trig_01Vn5Sabem9CtcM58ZypHzWm"; // task that applies queued changes; runs only when Send to Up starts it
   const C = { navy: "#1F3A5F", peach: "#F2A07B", muted: "#5F5C63", hairline: "#E6DFD8" };
   const money = (v, dp = 2) => (v < 0 ? "−" : "") + "$" + Math.abs(v).toLocaleString("en-AU", { minimumFractionDigits: dp, maximumFractionDigits: dp });
   const dfmt = (d) => new Date(d + "T00:00:00").toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "2-digit" });
@@ -927,10 +927,10 @@
     const list = [...Object.values(changes), ...Object.values(tagChanges)];
     const staged = list.filter((c) => c.status === "staged").length, pending = list.filter((c) => c.status === "pending").length, failed = list.filter((c) => c.status === "failed").length;
     $("stagedCount").textContent = staged === 1 ? "1 change" : staged + " changes";
-    $("sendBtn").disabled = !canWrite || !staged; $("clearStaged").disabled = !canWrite || !staged;
+    $("sendBtn").disabled = !canWrite || (!staged && !pending); $("sendBtn").textContent = !staged && pending ? "Try sending again" : "Send to Up"; $("clearStaged").disabled = !canWrite || !staged;
     const note = $("syncNote"); note.className = "small muted";
     if (!canWrite) note.textContent = db ? "You can view everything here. Only editors can change categories." : "Category changes need the page open in Claude.";
-    else if (pending) note.textContent = pending + (pending === 1 ? " change is" : " changes are") + " waiting to be applied in Up. This happens within the hour at the latest.";
+    else if (pending) note.textContent = pending + (pending === 1 ? " change is" : " changes are") + " waiting to be applied in Up. This usually takes a few minutes.";
     else if (failed) { note.className = "small status-bad"; note.textContent = failed + (failed === 1 ? " change" : " changes") + " couldn't be applied. Hover the red status for Up's reason."; }
     else if (!staged) note.textContent = "Pick a category or tag. Nothing changes in Up until you press Send to Up.";
     else note.textContent = "Saved here. Press Send to Up when you're ready.";
@@ -941,21 +941,23 @@
   async function send() {
     const ids = Object.values(changes).filter((c) => c.status === "staged").map((c) => c.txId);
     const tagIds = Object.values(tagChanges).filter((c) => c.status === "staged").map((c) => c.txId);
-    if ((!ids.length && !tagIds.length) || !db) return;
+    const waiting = [...Object.values(changes), ...Object.values(tagChanges)].some((c) => c.status === "pending");
+    if ((!ids.length && !tagIds.length && !waiting) || !db) return;
     $("sendBtn").disabled = true;
     const at = new Date().toISOString();
     await Promise.all([...ids.map((id) => db.doc("changes/" + id).update({ status: "pending", requestedAt: at })), ...tagIds.map((id) => db.doc("tagChanges/" + id).update({ status: "pending", requestedAt: at }))]);
     await db.doc("meta/sync").set({ requestedAt: at, count: ids.length, tagCount: tagIds.length });
     const note = $("syncNote");
-    if (!mcp) { note.textContent = "Saved. The hourly check applies these in Up, or ask Claude in chat to do it now."; return; }
+    if (!mcp) { note.textContent = "Saved. Ask Claude in chat to apply these in Up."; return; }
     try {
       await mcp.callTool("Claude Code Remote", "fire_trigger", { trigger_id: APPLY_TASK, text: "Send to Up was pressed with " + ids.length + " category and " + tagIds.length + " tag change(s) pending." });
       note.textContent = "Sent. Claude is applying these in Up now; they show as Updated in Up within a few minutes.";
     } catch (e) {
       const c = e && e.code; note.className = "small status-bad";
       note.className = "small muted";
-      note.textContent = c === "not_in_manifest" ? "Saved. Starting Claude from this page isn't allowed for you, so the hourly check will apply these in Up."
-        : "Saved. Claude couldn't be started right now, so the hourly check will apply these in Up within the hour.";
+      note.className = "small status-bad";
+      note.textContent = c === "not_in_manifest" ? "Saved, but starting Claude from this page isn't allowed for you. Ask Claude in chat to apply these in Up."
+        : "Saved, but Claude couldn't be started right now. Press Try sending again shortly, or ask Claude in chat to apply them.";
     }
   }
 

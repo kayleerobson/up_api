@@ -59,7 +59,7 @@ Up's own LLM reference is saved at `reference/llms.txt` (from https://developer.
   - `tags/<id>`: tags created on the page that aren't in Up yet `{name}`
   - `meta/sync`: last time Send to Up was pressed; `meta/data`: `{refreshedAt}` of the data files
   - status goes `staged` (picked, not sent) → `pending` (Send to Up pressed) → `applied` or `failed` (with `error`). Only touch `pending` ones; `staged` ones are the person's unsent choices.
-- Send to Up fires the scheduled task `trig_017ZMqsTDUngZ1bFwjbiTW2Z`, which also runs hourly. Both run the workflow below in a fresh session.
+- Send to Up starts the task `trig_01Vn5Sabem9CtcM58ZypHzWm` (no schedule: it runs only when the button starts it), which runs the workflow below in a fresh session. If the button can't start it, the changes stay `pending` and the button turns into "Try sending again"; in chat, run the workflow directly.
 
 ### Workflow: Apply queued changes from 2Up Money
 
