@@ -167,15 +167,20 @@
   .billform input[type="date"]::-webkit-date-and-time-value { text-align: left; }
   .billform .actions { display: flex; gap: 8px; flex-wrap: wrap; align-self: end; }
   .incgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 34rem), 1fr)); gap: 16px; align-items: start; }
-  .lines input, .lines select, .incbar select, .incbar input { width: 100%; min-width: 0; box-sizing: border-box; height: 32px; margin: 0; font: inherit; font-size: 13px; color: var(--ink); background: var(--raised); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 4px 6px; }
+  .lines input, .lines select, .monthbar input { width: 100%; min-width: 0; box-sizing: border-box; height: 32px; margin: 0; font: inherit; font-size: 13px; color: var(--ink); background: var(--raised); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 4px 6px; }
   .incgrid > * { min-width: 0; }
   .lines { display: grid; gap: 8px; container-type: inline-size; }
-  .pl { display: grid; grid-template-columns: minmax(6rem, 1fr) 4rem 5rem 6rem 5.5rem 3.5rem; gap: 8px; align-items: center; }
+  .pl { display: grid; grid-template-columns: minmax(6rem, 1fr) 4rem 5rem 9.5rem 5.5rem 3.5rem; gap: 8px; align-items: center; }
   .pl.hd { font-size: 12px; font-weight: 600; color: var(--muted); }
   .pl .amt { text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; }
-  @container (max-width: 520px) { .pl { grid-template-columns: repeat(3, minmax(0, 1fr)); } .pl > :first-child { grid-column: 1 / -1; } .pl.hd { display: none; } .pl { border-bottom: 1px solid var(--hairline); padding-bottom: 8px; } .pl .amt { text-align: left; } }
+  @container (max-width: 580px) { .pl { grid-template-columns: repeat(3, minmax(0, 1fr)); } .pl > :first-child { grid-column: 1 / -1; } .pl.hd { display: none; } .pl { border-bottom: 1px solid var(--hairline); padding-bottom: 8px; } .pl .amt { text-align: left; } }
   .incbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
   .incbar .field { width: 11rem; }
+  .monthbar { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: end; }
+  .monthbar .field { width: 11rem; }
+  .monthbar p { flex: 1 1 20rem; margin: 0; padding-bottom: 6px; }
+  .check { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: var(--ink); cursor: pointer; margin-top: 12px; }
+  .check input { width: 16px; height: 16px; margin: 0; accent-color: var(--cobalt); }
   .sumtable td, .sumtable th { padding: 6px 8px; }
   .sumtable tr.total td { font-weight: 600; border-top: 1px solid var(--ink); }
   td.num { white-space: nowrap; }
@@ -394,19 +399,21 @@
       <div class="tile"><p class="label">Average month</p><span class="stat" id="iAvg">—</span><p class="small muted">Jai's 52 pays spread over 12 months, plus Kaylee</p></div>
     </div>
     <div class="card">
-      <div class="incbar" style="margin-top:0"><div class="field"><label class="label" for="iMonth">Month</label><input id="iMonth" type="month"></div>
-        <p class="small muted" style="margin:16px 0 0">Tax is an estimate of PAYG withholding at 2026–27 rates (including the 2% Medicare levy and the low income tax offset), assuming the tax-free threshold is claimed and no HELP debt.</p></div>
+      <div class="monthbar"><div class="field"><label class="label" for="iMonth">Month</label><input id="iMonth" type="month"></div>
+        <p class="small muted">Tax is an estimate of PAYG withholding at 2026–27 rates, including the 2% Medicare levy and the low income tax offset, and assumes the tax-free threshold is claimed. HECS/HELP repayments use the 2025–26 thresholds until the ATO publishes 2026–27 figures.</p></div>
     </div>
     <div class="incgrid">
       <div class="card" id="inc-jai">
         <div class="card-head"><div><h2>Jai</h2><p class="note">Paid weekly on Wednesdays. Enter one week's pay; tax is worked out on each week's pay, then the weeks paid in the month are added up.</p></div></div>
-        <div class="lines"><div class="pl hd" aria-hidden="true"><span>Item</span><span>Quantity</span><span>Rate $</span><span>Tax</span><span class="amt">Amount</span><span></span></div><div class="lines" id="iJaiLines"></div></div>
+        <div class="lines"><div class="pl hd" aria-hidden="true"><span>Item</span><span>Quantity</span><span>Rate $</span><span>Type</span><span class="amt">Amount</span><span></span></div><div class="lines" id="iJaiLines"></div></div>
+        <label class="check"><input type="checkbox" id="iJaiHelp" data-help="jai"> Has a HECS/HELP debt</label>
         <div class="incbar"><button class="btn ghost" type="button" data-add="jai">Add line</button><button class="btn" type="button" data-calc="jai">Calculate</button><span class="small muted" id="iJaiMsg"></span></div>
         <div id="iJaiOut"></div>
       </div>
       <div class="card" id="inc-kaylee">
-        <div class="card-head"><div><h2>Kaylee</h2><p class="note">Paid monthly. Enter one month's pay; tax is worked out on the month's pay.</p></div></div>
-        <div class="lines"><div class="pl hd" aria-hidden="true"><span>Item</span><span>Quantity</span><span>Rate $</span><span>Tax</span><span class="amt">Amount</span><span></span></div><div class="lines" id="iKayLines"></div></div>
+        <div class="card-head"><div><h2>Kaylee</h2><p class="note">Paid monthly. Enter one month's pay; tax is worked out on the month's pay. Add a novated lease as two lines: the pre-tax part (comes off pay before tax) and the after-tax part (comes off take-home).</p></div></div>
+        <div class="lines"><div class="pl hd" aria-hidden="true"><span>Item</span><span>Quantity</span><span>Rate $</span><span>Type</span><span class="amt">Amount</span><span></span></div><div class="lines" id="iKayLines"></div></div>
+        <label class="check"><input type="checkbox" id="iKayHelp" data-help="kaylee"> Has a HECS/HELP debt</label>
         <div class="incbar"><button class="btn ghost" type="button" data-add="kaylee">Add line</button><button class="btn" type="button" data-calc="kaylee">Calculate</button><span class="small muted" id="iKayMsg"></span></div>
         <div id="iKayOut"></div>
       </div>
@@ -1256,15 +1263,24 @@
   }
   // Tax withheld from one pay: the pay is annualised, taxed, and divided back, rounded to whole dollars like the ATO tables.
   const payTax = (taxable, perYear) => Math.round(annualTax(taxable * perYear) / perYear);
+  // HECS/HELP compulsory repayment (marginal system from 2025-26): nothing up to the threshold, 15c per dollar above it,
+  // then a flat amount plus 17c per dollar above the upper threshold. Worked on repayment income, which adds back pre-tax (salary sacrificed) amounts.
+  const HELP = { from: 67000, rate: 0.15, upper: 125000, base: 8700, upperRate: 0.17 };
+  const helpAnnual = (inc) => inc <= HELP.from ? 0 : inc <= HELP.upper ? (inc - HELP.from) * HELP.rate : HELP.base + (inc - HELP.upper) * HELP.upperRate;
+  const payHelp = (inc, perYear) => Math.round(helpAnnual(inc * perYear) / perYear);
+  // Line types: taxed pay, tax-free pay, pre-tax deduction (e.g. novated lease pre-tax), after-tax deduction (e.g. novated lease after-tax).
+  const KINDS = [["taxed", "Taxed pay"], ["free", "Tax-free pay"], ["pre", "Pre-tax deduction"], ["post", "After-tax deduction"]];
+  const kindOf = (x) => x.kind || (x.taxed === false ? "free" : "taxed");
   const INC = {
-    jai: { label: "Jai", perYear: 52, lines: "iJaiLines", out: "iJaiOut", msg: "iJaiMsg", items: [{ name: "Ordinary hours", qty: 38, rate: 0, taxed: true }], calc: false, dirty: false },
-    kaylee: { label: "Kaylee", perYear: 12, lines: "iKayLines", out: "iKayOut", msg: "iKayMsg", items: [{ name: "Salary", qty: 1, rate: 0, taxed: true }], calc: false, dirty: false },
+    jai: { label: "Jai", perYear: 52, lines: "iJaiLines", out: "iJaiOut", msg: "iJaiMsg", helpBox: "iJaiHelp", help: false, items: [{ name: "Ordinary hours", qty: 38, rate: 0, kind: "taxed" }], calc: false, dirty: false },
+    kaylee: { label: "Kaylee", perYear: 12, lines: "iKayLines", out: "iKayOut", msg: "iKayMsg", helpBox: "iKayHelp", help: true, items: [{ name: "Salary", qty: 1, rate: 0, kind: "taxed" }, { name: "Novated lease (pre-tax)", qty: 1, rate: 0, kind: "pre" }, { name: "Novated lease (after-tax)", qty: 1, rate: 0, kind: "post" }], calc: false, dirty: false },
   };
   const lineAmt = (x) => r2((Number(x.qty) || 0) * (Number(x.rate) || 0));
   function payFor(who) {
-    const p = INC[who], taxable = r2(p.items.filter((x) => x.taxed).reduce((s, x) => s + lineAmt(x), 0)), free = r2(p.items.filter((x) => !x.taxed).reduce((s, x) => s + lineAmt(x), 0));
-    const tax = payTax(taxable, p.perYear);
-    return { taxable, free, gross: r2(taxable + free), tax, net: r2(taxable + free - tax) };
+    const p = INC[who], sum = (k) => r2(p.items.filter((x) => kindOf(x) === k).reduce((s, x) => s + lineAmt(x), 0));
+    const pay = sum("taxed"), free = sum("free"), pre = sum("pre"), post = sum("post"), taxable = r2(Math.max(0, pay - pre));
+    const tax = payTax(taxable, p.perYear), help = p.help ? payHelp(taxable + pre, p.perYear) : 0;
+    return { pay, free, pre, post, taxable, gross: r2(pay + free), tax, help, out: tax + help, net: r2(taxable + free - tax - help - post) };
   }
   // Wednesdays (Jai's pay day) in a YYYY-MM month.
   function wednesdays(month) {
@@ -1279,9 +1295,9 @@
       const nm = el("input", { type: "text", value: x.name || "", maxLength: 60, placeholder: "Item, e.g. Overtime" }); nm.setAttribute("aria-label", p.label + " item name");
       const q = el("input", { type: "number", value: x.qty ?? "", step: "any", min: "0", inputMode: "decimal", placeholder: "Qty" }); q.setAttribute("aria-label", "Quantity");
       const r = el("input", { type: "number", value: x.rate ?? "", step: "0.01", min: "0", inputMode: "decimal", placeholder: "Rate $" }); r.setAttribute("aria-label", "Rate");
-      const t = el("select", {}, [el("option", { value: "1", textContent: "Taxed" }), el("option", { value: "0", textContent: "Tax-free" })]); t.value = x.taxed ? "1" : "0"; t.setAttribute("aria-label", "Taxed or tax-free");
+      const t = el("select", {}, KINDS.map(([v, l]) => el("option", { value: v, textContent: l }))); t.value = kindOf(x); t.setAttribute("aria-label", "Line type");
       const amt = el("span", { className: "amt", textContent: money(lineAmt(x)) });
-      const upd = () => { x.name = nm.value; x.qty = q.value === "" ? "" : Number(q.value); x.rate = r.value === "" ? "" : Number(r.value); x.taxed = t.value === "1"; amt.textContent = money(lineAmt(x)); p.dirty = true; p.calc = false; drawOut(who); };
+      const upd = () => { x.name = nm.value; x.qty = q.value === "" ? "" : Number(q.value); x.rate = r.value === "" ? "" : Number(r.value); x.kind = t.value; delete x.taxed; amt.textContent = money(lineAmt(x)); p.dirty = true; p.calc = false; drawOut(who); };
       for (const f of [nm, q, r]) f.addEventListener("input", upd); t.addEventListener("change", upd);
       const rm = el("button", { className: "rowbtn danger", type: "button", textContent: "Remove" }); rm.addEventListener("click", () => { p.items.splice(i, 1); p.dirty = true; p.calc = false; drawPayLines(who); drawOut(who); });
       body.append(el("div", { className: "pl" }, [nm, q, r, t, amt, rm]));
@@ -1294,14 +1310,16 @@
     if (!p.calc) { out.append(el("p", { className: "small muted", textContent: "Press Calculate to see tax and take-home pay." })); renderIncomeTiles(); return; }
     const pay = payFor(who), per = who === "jai" ? "week" : "month";
     const t = el("table", { className: "sumtable" }, [el("tbody", {}, [
-      sumRow("Taxed pay per " + per, money(pay.taxable)), sumRow("Tax-free pay per " + per, money(pay.free)),
-      sumRow("Tax withheld per " + per, money(-pay.tax)), sumRow("Take-home per " + per, money(pay.net), "total")])]);
+      sumRow("Taxed pay", money(pay.pay)), pay.pre ? sumRow("Pre-tax deductions", money(-pay.pre)) : "", pay.pre ? sumRow("Taxable pay", money(pay.taxable)) : "",
+      sumRow("Tax withheld", money(-pay.tax)), p.help ? sumRow("HECS/HELP repayment", money(-pay.help)) : "",
+      pay.free ? sumRow("Tax-free pay", money(pay.free)) : "", pay.post ? sumRow("After-tax deductions", money(-pay.post)) : "",
+      sumRow("Take-home per " + per, money(pay.net), "total")])]);
     out.append(el("h3", { textContent: "Each " + per, style: "margin-top:16px" }), el("div", { className: "tablebox" }, [t]));
     if (who === "jai") {
-      const wk = wednesdays(iMonthVal()), rows = wk.map((d) => el("tr", {}, [el("td", { className: "num", textContent: dfmt(d) }), el("td", { className: "n num", textContent: money(pay.gross) }), el("td", { className: "n num", textContent: money(-pay.tax) }), el("td", { className: "n num", textContent: money(pay.net) })]));
-      rows.push(el("tr", { className: "total" }, [el("td", { textContent: wk.length + " pays" }), el("td", { className: "n num", textContent: money(r2(pay.gross * wk.length)) }), el("td", { className: "n num", textContent: money(-pay.tax * wk.length) }), el("td", { className: "n num", textContent: money(r2(pay.net * wk.length)) })]));
+      const wk = wednesdays(iMonthVal()), rows = wk.map((d) => el("tr", {}, [el("td", { className: "num", textContent: dfmt(d) }), el("td", { className: "n num", textContent: money(pay.gross) }), el("td", { className: "n num", textContent: money(-pay.out) }), el("td", { className: "n num", textContent: money(pay.net) })]));
+      rows.push(el("tr", { className: "total" }, [el("td", { textContent: wk.length + " pays" }), el("td", { className: "n num", textContent: money(r2(pay.gross * wk.length)) }), el("td", { className: "n num", textContent: money(-pay.out * wk.length) }), el("td", { className: "n num", textContent: money(r2(pay.net * wk.length)) })]));
       out.append(el("h3", { textContent: "Pay days in " + monthName(iMonthVal()), style: "margin-top:16px" }),
-        el("div", { className: "tablebox" }, [el("table", { className: "sumtable" }, [el("thead", {}, [el("tr", {}, [el("th", { textContent: "Wednesday" }), el("th", { className: "n", textContent: "Gross" }), el("th", { className: "n", textContent: "Tax" }), el("th", { className: "n", textContent: "Take-home" })])]), el("tbody", {}, rows)])]));
+        el("div", { className: "tablebox" }, [el("table", { className: "sumtable" }, [el("thead", {}, [el("tr", {}, [el("th", { textContent: "Wednesday" }), el("th", { className: "n", textContent: "Gross" }), el("th", { className: "n", textContent: "Tax + HELP" }), el("th", { className: "n", textContent: "Take-home" })])]), el("tbody", {}, rows)])]));
     }
     renderIncomeTiles();
   }
@@ -1315,16 +1333,17 @@
     $("iHouse").textContent = jm === null && km === null ? "—" : money(r2((jm || 0) + (km || 0)), 0); $("iHouseSub").textContent = monthName(m);
     $("iAvg").textContent = jm === null && km === null ? "—" : money(r2((j ? j.net * 52 / 12 : 0) + (km || 0)), 0);
   }
-  function renderIncome() { if ($("view-income").hidden) return; if (!$("iMonth").value) $("iMonth").value = NOW_MONTH; for (const w of ["jai", "kaylee"]) { drawPayLines(w); drawOut(w); } }
+  function renderIncome() { if ($("view-income").hidden) return; if (!$("iMonth").value) $("iMonth").value = NOW_MONTH; for (const w of ["jai", "kaylee"]) { $(INC[w].helpBox).checked = INC[w].help; drawPayLines(w); drawOut(w); } }
   async function calcIncome(who) {
     const p = INC[who], msg = $(p.msg);
     p.items = p.items.filter((x) => (x.name || "").trim() || lineAmt(x));
     p.calc = true; drawPayLines(who); drawOut(who);
     if (!db || !canWrite) { msg.textContent = "Calculated. Only editors can save pay lines."; return; }
-    try { await db.doc("income/" + who).set({ items: p.items.map((x) => ({ name: (x.name || "").trim(), qty: Number(x.qty) || 0, rate: Number(x.rate) || 0, taxed: !!x.taxed })), updatedAt: new Date().toISOString() }); p.dirty = false; msg.textContent = "Saved."; }
+    try { await db.doc("income/" + who).set({ help: !!p.help, items: p.items.map((x) => ({ name: (x.name || "").trim(), qty: Number(x.qty) || 0, rate: Number(x.rate) || 0, kind: kindOf(x) })), updatedAt: new Date().toISOString() }); p.dirty = false; msg.textContent = "Saved."; }
     catch (e) { msg.textContent = "Calculated, but the pay lines weren't saved. Try again in a moment."; }
   }
-  for (const b of document.querySelectorAll("[data-add]")) b.addEventListener("click", () => { const w = b.dataset.add; INC[w].items.push({ name: "", qty: 1, rate: 0, taxed: true }); INC[w].dirty = true; INC[w].calc = false; drawPayLines(w); drawOut(w); const ins = $(INC[w].lines).querySelectorAll('input[type="text"]'); if (ins.length) ins[ins.length - 1].focus(); });
+  for (const b of document.querySelectorAll("[data-add]")) b.addEventListener("click", () => { const w = b.dataset.add; INC[w].items.push({ name: "", qty: 1, rate: 0, kind: "taxed" }); INC[w].dirty = true; INC[w].calc = false; drawPayLines(w); drawOut(w); const ins = $(INC[w].lines).querySelectorAll('input[type="text"]'); if (ins.length) ins[ins.length - 1].focus(); });
+  for (const b of document.querySelectorAll("[data-help]")) b.addEventListener("change", () => { const p = INC[b.dataset.help]; p.help = b.checked; p.dirty = true; p.calc = false; drawOut(b.dataset.help); });
   for (const b of document.querySelectorAll("[data-calc]")) b.addEventListener("click", () => calcIncome(b.dataset.calc));
   $("iMonth").addEventListener("change", () => { drawOut("jai"); renderIncomeTiles(); });
 
@@ -1407,7 +1426,7 @@
       fillFilters(); renderEverything();
     }, () => { canWrite = false; renderEverything(); });
     if (db) db.collection("tagChanges").onSnapshot((snap) => { tagChanges = {}; for (const d of snap.docs) tagChanges[d.id] = d.data(); fillTagControls(); renderEverything(); }, () => {});
-    if (db) db.collection("income").onSnapshot((snap) => { for (const d of snap.docs) if (INC[d.id] && !INC[d.id].dirty) { INC[d.id].items = (d.data().items || []).map((x) => ({ ...x })); INC[d.id].calc = true; } renderIncome(); }, () => {});
+    if (db) db.collection("income").onSnapshot((snap) => { for (const d of snap.docs) if (INC[d.id] && !INC[d.id].dirty) { INC[d.id].items = (d.data().items || []).map((x) => ({ ...x })); if (typeof d.data().help === "boolean") INC[d.id].help = d.data().help; INC[d.id].calc = true; } renderIncome(); }, () => {});
     if (db) db.collection("bills").onSnapshot((snap) => { bills = {}; for (const d of snap.docs) bills[d.id] = d.data(); renderBills(); }, () => {});
     if (db) db.collection("tags").onSnapshot((snap) => { newTags = {}; for (const d of snap.docs) newTags[d.id] = d.data(); fillTagControls(); renderEverything(); }, () => {});
     renderEverything();
