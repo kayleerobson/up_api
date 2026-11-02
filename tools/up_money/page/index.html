@@ -138,17 +138,6 @@
     <p class="lede muted" id="lede">Your joint Up accounts and savers: where the money comes from, where it goes, and who spent it.</p>
   </header>
 
-  <div class="sync" role="region" aria-label="Category changes waiting to send">
-    <div class="sync-msg">
-      <p><span class="count num" id="stagedCount">0 changes</span> <span class="muted">to categories and tags ready to send to Up.</span></p>
-      <p class="small muted" id="syncNote">Pick a category or tag. Nothing changes in Up until you press Send to Up.</p>
-    </div>
-    <div class="bar">
-      <button class="btn ghost" id="clearStaged" type="button">Clear unsent</button>
-      <button class="btn" id="sendBtn" type="button">Send to Up</button>
-    </div>
-  </div>
-
   <div class="tabs" role="tablist" aria-label="Views">
     <button class="tab" role="tab" id="tab-overview" data-view="overview" aria-controls="view-overview" aria-selected="true" type="button">Overview</button>
     <button class="tab" role="tab" id="tab-needs" data-view="needs" aria-controls="view-needs" aria-selected="false" type="button">Needs a category <span class="pill num" id="needsBadge">0</span></button>
@@ -213,6 +202,16 @@
 
   <!-- ================= NEEDS A CATEGORY ================= -->
   <section id="view-needs" role="tabpanel" aria-labelledby="tab-needs" class="card" hidden>
+    <div class="sync" role="region" aria-label="Category changes waiting to send">
+      <div class="sync-msg">
+        <p><span class="count num" id="stagedCount">0 changes</span> <span class="muted">to categories and tags ready to send to Up.</span></p>
+        <p class="small muted" id="syncNote">Pick a category or tag. Nothing changes in Up until you press Send to Up.</p>
+      </div>
+      <div class="bar">
+        <button class="btn ghost" id="clearStaged" type="button">Clear unsent</button>
+        <button class="btn" id="sendBtn" type="button">Send to Up</button>
+      </div>
+    </div>
     <div class="card-head">
       <div><h2>Needs a category</h2>
       <p class="note">Transactions Up lets you categorise that have no category yet. Tick several and set a category or add a tag in one go, or use the dropdown on each row. Transfers between Up accounts can't be categorised in Up, so they aren't listed.</p></div>
@@ -243,7 +242,7 @@
   <section id="view-transactions" role="tabpanel" aria-labelledby="tab-transactions" class="card" hidden>
     <div class="card-head">
       <div><h2>All transactions</h2>
-      <p class="note">Every transaction in your joint accounts and savers. Change a category with the dropdown on any row Up allows; it joins the changes waiting to send.</p></div>
+      <p class="note">Every transaction in your joint accounts and savers. Change a category or add a tag on any row Up allows; it joins the changes waiting to send, which you send to Up from the Needs a category tab.</p></div>
       <button class="btn ghost csv" type="button" data-csv="transactions">Download CSV</button>
     </div>
     <div class="bar">
