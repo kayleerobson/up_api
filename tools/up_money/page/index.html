@@ -135,7 +135,7 @@
 <div class="wrap">
   <header class="head">
     <h1>2Up Money</h1>
-    <p class="lede muted" id="lede">Your joint Up accounts and savers: where the money comes from, where it goes, and who spent it.</p>
+    <p class="lede status-bad" id="lede" hidden></p>
   </header>
 
   <div class="tabs" role="tablist" aria-label="Views">
@@ -431,8 +431,6 @@
     $("tBalNote").textContent = ov.account ? ov.account : "All joint accounts and savers";
     $("balScope").textContent = ov.account ? ov.account : "all joint accounts and savers";
     const cr = catRows();
-        const lede = $("lede"); lede.replaceChildren((ov.account ? ov.account + ", " : "Joint accounts, ") + (ov.month ? mfmt(ov.month, true) : "all months") + ": ", el("b", { textContent: money(moneyIn) }), " came in and ", el("b", { textContent: money(outAll) }), " went out.",
-      cr.length ? " The biggest outgoing category" + (ov.who ? " for " + ov.who : "") + " was " : "", cr.length ? el("b", { textContent: cr[0].category }) : "", cr.length ? "." : "");
 
     drawBalance(); drawFlow();
     drawSubPie(); if (drawer.open) drawer.refresh();
@@ -1002,7 +1000,7 @@
       for (const p of cats) for (const ch of p.children) subIndex[ch.id] = { name: ch.name, parentName: p.name };
       $("dataDate").textContent = tx.length ? dfmt(tx[0].date) : "—";
     } catch (e) {
-      $("lede").textContent = "The transaction data didn't load. Reload the page to try again.";
+      $("lede").textContent = "The transaction data didn't load. Reload the page to try again."; $("lede").hidden = false;
       return;
     }
     fillFilters();
