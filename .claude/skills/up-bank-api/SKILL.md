@@ -49,7 +49,7 @@ Up's own LLM reference is saved at `reference/llms.txt` (from https://developer.
 - At most 6 tags per transaction.
 - `filter[tag]=<label>` on transaction lists; an unknown tag returns zero rows, not an error.
 
-## The 2Up Money page
+## The Money HQ page (formerly 2Up Money)
 
 - Artifact: https://claude.ai/artifact/AuQZD2GhnqQQbnxAcQpHu1 (plain page with `db`, `user`, `downloads` and the `mcp` capability for Claude Code Remote `fire_trigger`). Kaylee Brand v2 colours (cobalt + coral on cool white), light only.
 - Page source: `tools/up_money/page/index.html`. Data files it fetches: `data/transactions.json`, `data/categories.json`, `data/balances.json`, `data/tags.json`, built by `tools/up_money/export.py`.

@@ -1,6 +1,6 @@
-# 2Up Money tools
+# Money HQ (formerly 2Up Money) tools
 
-Scripts behind the [2Up Money](https://claude.ai/artifact/AuQZD2GhnqQQbnxAcQpHu1) page: a dashboard of the joint Up accounts where you can also categorise and tag transactions.
+Scripts behind the [Money HQ (formerly 2Up Money)](https://claude.ai/artifact/AuQZD2GhnqQQbnxAcQpHu1) page: a dashboard of the joint Up accounts where you can also categorise and tag transactions.
 
 | File | What it does |
 |---|---|
