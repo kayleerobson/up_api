@@ -57,6 +57,7 @@ Up's own LLM reference is saved at `reference/llms.txt` (from https://developer.
   - `changes/<txId>`: `{txId, to (child category id or null to remove), from, status}`
   - `tagChanges/<txId>`: `{txId, add: [labels], status}`
   - `tags/<id>`: tags created on the page that aren't in Up yet `{name}`
+  - `bills/<id>`: bills entered on the Bills tab `{name, amount, freq (weekly|fortnightly|monthly|quarterly|half-yearly|yearly|once), due (first due date), account, start, end (or null), note}`. Page-only; nothing in Up.
   - `meta/sync`: last time Send to Up was pressed; `meta/data`: `{refreshedAt}` of the data files
   - status goes `staged` (picked, not sent) → `pending` (Send to Up pressed) → `applied` or `failed` (with `error`). Only touch `pending` ones; `staged` ones are the person's unsent choices.
 - Send to Up starts the task `trig_01Vn5Sabem9CtcM58ZypHzWm` (no schedule: it runs only when the button starts it), which runs the workflow below in a fresh session. If the button can't start it, the changes stay `pending` and the button turns into "Try sending again"; in chat, run the workflow directly.

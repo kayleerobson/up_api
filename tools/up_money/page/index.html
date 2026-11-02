@@ -4,7 +4,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,600&family=Fraunces:opsz,wght@9..144,600&display=swap">
 <style>
   /* Kaylee Brand v2, dashboard palette (cobalt + coral), exact brand tokens. Light only, by the brand's rule.
-     Layout: header, sticky sync bar, three tabs (Overview / Needs a category / All transactions). */
+     Layout: header, then four tabs (Dashboard / Needs a category / All transactions / Bills). */
   :root {
     --surface: #F7FAFC; --raised: #FFFFFF; --ink: #14213D; --muted: #4A5568; --hairline: #DCE4EA;
     --cobalt: #005F99; --cobalt-tint: #E5F0F7; --coral: #FF6B5B; --coral-deep: #B83A2C;
@@ -127,6 +127,12 @@
   .drawer .tablebox { max-height: none; }
   .x { font: inherit; font-size: 20px; line-height: 20px; background: none; border: 0; color: var(--muted); cursor: pointer; padding: 4px; }
   .crumb { font: inherit; font-size: 13px; background: none; border: 0; padding: 0; color: var(--cobalt); text-decoration: underline; cursor: pointer; }
+  .billform { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: 12px; align-items: end; }
+  .billform input[type="text"] { font: inherit; font-size: 13px; line-height: 20px; color: var(--ink); background: var(--raised); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 5px 8px; width: 100%; box-sizing: border-box; }
+  .billform input[type="number"], .billform input[type="date"], .billform select { width: 100%; box-sizing: border-box; }
+  .billform .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .rowbtn { font: inherit; font-size: 12px; background: none; border: 0; padding: 0 6px 0 0; color: var(--cobalt); text-decoration: underline; cursor: pointer; }
+  .rowbtn.danger { color: var(--negative); }
   .empty { padding: 24px; text-align: center; color: var(--muted); }
   .note { font-size: 13px; line-height: 20px; color: var(--muted); max-width: 80ch; }
   @media (max-width: 640px) { input[type="search"] { width: 100%; } .hide-sm { display: none; } .stat { font-size: 30px; line-height: 36px; } }
@@ -142,6 +148,7 @@
     <button class="tab" role="tab" id="tab-overview" data-view="overview" aria-controls="view-overview" aria-selected="true" type="button">Dashboard</button>
     <button class="tab" role="tab" id="tab-needs" data-view="needs" aria-controls="view-needs" aria-selected="false" type="button">Needs a category <span class="pill num" id="needsBadge">0</span></button>
     <button class="tab" role="tab" id="tab-transactions" data-view="transactions" aria-controls="view-transactions" aria-selected="false" type="button">All transactions</button>
+    <button class="tab" role="tab" id="tab-bills" data-view="bills" aria-controls="view-bills" aria-selected="false" type="button">Bills</button>
   </div>
 
   <!-- ================= OVERVIEW ================= -->
@@ -267,6 +274,42 @@
         </tr></thead>
         <tbody id="allBody"></tbody>
       </table>
+    </div>
+  </section>
+
+  <!-- ================= BILLS ================= -->
+  <section id="view-bills" role="tabpanel" aria-labelledby="tab-bills" class="stack" hidden>
+    <div class="tiles" aria-label="Bill totals">
+      <div class="tile"><p class="label">Bills per month</p><span class="stat" id="bMonthly">—</span><p class="small muted">Every active bill, averaged to a month</p></div>
+      <div class="tile"><p class="label">Bills per year</p><span class="stat" id="bYearly">—</span><p class="small muted">The same bills over 12 months</p></div>
+      <div class="tile"><p class="label">Due in the next 30 days</p><span class="stat" id="bSoon">—</span><p class="small muted"><span id="bSoonN">0</span> payments</p></div>
+      <div class="tile"><p class="label">Active bills</p><span class="stat" id="bCount">—</span><p class="small muted">Not ended yet</p></div>
+    </div>
+
+    <div class="card" id="bill-form-card">
+      <div class="card-head"><div><h2 id="billFormTitle">Add a bill</h2><p class="note">Enter a bill once with how often it repeats. The next due date is worked out from the first due date. Leave the end date empty for bills with no end.</p></div></div>
+      <div class="billform">
+        <div class="field"><label class="label" for="bName">Bill</label><input id="bName" type="text" maxlength="80" placeholder="e.g. Electricity (AGL)"></div>
+        <div class="field"><label class="label" for="bAmount">Amount $</label><input id="bAmount" type="number" min="0" step="0.01" inputmode="decimal"></div>
+        <div class="field"><label class="label" for="bFreq">How often</label><select id="bFreq"><option value="weekly">Weekly</option><option value="fortnightly">Fortnightly</option><option value="monthly" selected>Monthly</option><option value="quarterly">Quarterly</option><option value="half-yearly">Every 6 months</option><option value="yearly">Yearly</option><option value="once">Once</option></select></div>
+        <div class="field"><label class="label" for="bDue">First due date</label><input id="bDue" type="date"></div>
+        <div class="field"><label class="label" for="bAccount">Paid from</label><select id="bAccount"></select></div>
+        <div class="field"><label class="label" for="bStart">Start</label><input id="bStart" type="date"></div>
+        <div class="field"><label class="label" for="bEnd">End (optional)</label><input id="bEnd" type="date"></div>
+        <div class="field"><label class="label" for="bNote">Note (optional)</label><input id="bNote" type="text" maxlength="120" placeholder="e.g. Direct debit, varies"></div>
+        <div class="actions"><button class="btn" id="bSave" type="button">Add bill</button><button class="btn ghost" id="bCancel" type="button" hidden>Cancel</button></div>
+      </div>
+      <p class="small" id="bMsg" hidden></p>
+    </div>
+
+    <div class="card" id="bill-list">
+      <div class="card-head"><div><h3>Your bills</h3><p class="note">Sorted by next due date. Edit or delete a bill from its row.</p></div><button class="btn ghost csv" type="button" data-csv="bills">Download CSV</button></div>
+      <div class="tablebox"><table><thead><tr><th>Bill</th><th class="n">Amount</th><th>How often</th><th>Next due</th><th>Paid from</th><th>Start</th><th>End</th><th class="n">Per month</th><th class="hide-sm">Note</th><th></th></tr></thead><tbody id="billBody"></tbody></table></div>
+    </div>
+
+    <div class="card" id="bill-upcoming">
+      <div class="card-head"><div><h3>Coming up</h3><p class="note">Every bill payment due in the next 60 days, by date.</p></div></div>
+      <div class="tablebox short"><table><thead><tr><th>Due</th><th>Bill</th><th>Paid from</th><th class="n">Amount</th><th class="n">Running total</th></tr></thead><tbody id="billSoonBody"></tbody></table></div>
     </div>
   </section>
 
@@ -960,13 +1003,117 @@
     }
   }
 
+  // ---------- Bills ----------
+  let bills = {}, editingBill = null, confirmDelete = null;
+  const FREQ = { weekly: { label: "Weekly", perYear: 52, step: (d, n) => addDays(d, 7 * n) }, fortnightly: { label: "Fortnightly", perYear: 26, step: (d, n) => addDays(d, 14 * n) },
+    monthly: { label: "Monthly", perYear: 12, step: (d, n) => addMonths(d, n) }, quarterly: { label: "Quarterly", perYear: 4, step: (d, n) => addMonths(d, 3 * n) },
+    "half-yearly": { label: "Every 6 months", perYear: 2, step: (d, n) => addMonths(d, 6 * n) }, yearly: { label: "Yearly", perYear: 1, step: (d, n) => addMonths(d, 12 * n) },
+    once: { label: "Once", perYear: 0, step: (d, n) => (n === 0 ? d : null) } };
+  // Adds whole months, keeping the day but stopping at the month's last day (31 Jan + 1 month = 28/29 Feb).
+  function addMonths(s, n) { const [y, m, d] = s.split("-").map(Number); const t = new Date(y, m - 1 + n, 1); const last = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate(); t.setDate(Math.min(d, last)); return iso(t); }
+  const todayISO = () => iso(new Date());
+  // Every due date of a bill between two dates (inclusive), respecting its start and end.
+  function occurrences(b, from, to) {
+    const f = FREQ[b.freq] || FREQ.monthly, out = [];
+    if (!b.due) return out;
+    for (let n = 0; n < 2000; n++) {
+      const d = f.step(b.due, n); if (!d || d > to || (b.end && d > b.end)) break;
+      if (d >= from && (!b.start || d >= b.start)) out.push(d);
+    }
+    return out;
+  }
+  const nextDue = (b) => occurrences(b, todayISO(), "2100-12-31")[0] || "";
+  const isActive = (b) => !b.end || b.end >= todayISO();
+  const perMonth = (b) => (isActive(b) ? (Number(b.amount) || 0) * (FREQ[b.freq] || FREQ.monthly).perYear / 12 : 0);
+  const billList = () => Object.entries(bills).map(([id, b]) => ({ id, ...b, next: nextDue(b) })).sort((a, b) => (a.next || "9999").localeCompare(b.next || "9999") || a.name.localeCompare(b.name));
+
+  function fillBillAccounts() {
+    const sel = $("bAccount"), v = sel.value;
+    sel.replaceChildren(...balances.map((b) => el("option", { value: b.account, textContent: b.account })));
+    if (v) sel.value = v; else if (balances.some((b) => b.account === "2Up Spending")) sel.value = "2Up Spending";
+  }
+  function billMsg(text, bad) { const m = $("bMsg"); m.textContent = text; m.className = "small " + (bad ? "status-bad" : "muted"); m.hidden = !text; }
+  function resetBillForm() {
+    editingBill = null;
+    for (const id of ["bName", "bAmount", "bDue", "bStart", "bEnd", "bNote"]) $(id).value = "";
+    $("bFreq").value = "monthly"; fillBillAccounts();
+    $("billFormTitle").textContent = "Add a bill"; $("bSave").textContent = "Add bill"; $("bCancel").hidden = true;
+  }
+  function editBill(id) {
+    const b = bills[id]; if (!b) return;
+    editingBill = id;
+    $("bName").value = b.name || ""; $("bAmount").value = b.amount ?? ""; $("bFreq").value = b.freq || "monthly"; $("bDue").value = b.due || "";
+    fillBillAccounts(); $("bAccount").value = b.account || ""; $("bStart").value = b.start || ""; $("bEnd").value = b.end || ""; $("bNote").value = b.note || "";
+    $("billFormTitle").textContent = "Edit " + (b.name || "bill"); $("bSave").textContent = "Save changes"; $("bCancel").hidden = false; billMsg("");
+    $("bill-form-card").scrollIntoView({ block: "start" }); $("bName").focus();
+  }
+  async function saveBill() {
+    if (!db || !canWrite) { billMsg("Only editors can add or change bills.", true); return; }
+    const name = $("bName").value.trim(), amount = parseFloat($("bAmount").value), due = $("bDue").value;
+    const start = $("bStart").value || due, end = $("bEnd").value;
+    if (!name) { billMsg("Give the bill a name.", true); $("bName").focus(); return; }
+    if (!(amount > 0)) { billMsg("Enter an amount above $0.", true); $("bAmount").focus(); return; }
+    if (!due) { billMsg("Pick the first due date.", true); $("bDue").focus(); return; }
+    if (end && end < start) { billMsg("The end date is before the start date.", true); $("bEnd").focus(); return; }
+    const data = { name, amount: r2(amount), freq: $("bFreq").value, due, account: $("bAccount").value, start, end: end || null, note: $("bNote").value.trim(), updatedAt: new Date().toISOString() };
+    $("bSave").disabled = true;
+    try {
+      if (editingBill) await db.doc("bills/" + editingBill).set({ ...bills[editingBill], ...data });
+      else await db.collection("bills").add({ ...data, createdAt: data.updatedAt });
+      billMsg((editingBill ? "Saved " : "Added ") + name + ".", false); resetBillForm();
+    } catch (e) { billMsg(e && e.code === "quota_exceeded" ? "There's no room for more bills. Delete one you don't need, then try again." : "The bill wasn't saved. Try again in a moment.", true); }
+    finally { $("bSave").disabled = false; }
+  }
+  async function deleteBill(id) {
+    if (confirmDelete !== id) { confirmDelete = id; renderBills(); return; }
+    confirmDelete = null;
+    try { await db.doc("bills/" + id).delete(); if (editingBill === id) resetBillForm(); billMsg("Deleted.", false); }
+    catch (e) { billMsg("That bill wasn't deleted. Try again in a moment.", true); }
+  }
+  function renderBills() {
+    const list = billList(), active = list.filter(isActive), today = todayISO();
+    const monthly = r2(active.reduce((s, b) => s + perMonth(b), 0));
+    const soon = []; for (const b of list) for (const d of occurrences(b, today, addDays(today, 59))) soon.push({ d, b });
+    soon.sort((a, b) => a.d.localeCompare(b.d) || a.b.name.localeCompare(b.b.name));
+    const in30 = soon.filter((x) => x.d <= addDays(today, 29));
+    $("bMonthly").textContent = money(monthly, 0); $("bYearly").textContent = money(r2(monthly * 12), 0);
+    $("bSoon").textContent = money(r2(in30.reduce((s, x) => s + Number(x.b.amount), 0)), 0); $("bSoonN").textContent = in30.length;
+    $("bCount").textContent = active.length;
+    const body = $("billBody"); body.replaceChildren();
+    if (!list.length) body.append(el("tr", {}, [el("td", { colSpan: 10, className: "empty", textContent: canWrite ? "No bills yet. Add your first one above." : "No bills yet." })]));
+    for (const b of list) {
+      const tr = el("tr", { className: isActive(b) ? "" : "dim" });
+      const acts = el("td", {});
+      if (canWrite) {
+        const ed = el("button", { className: "rowbtn", type: "button", textContent: "Edit" }); ed.addEventListener("click", () => editBill(b.id));
+        const del = el("button", { className: "rowbtn danger", type: "button", textContent: confirmDelete === b.id ? "Confirm delete" : "Delete" }); del.addEventListener("click", () => deleteBill(b.id).catch(() => {}));
+        acts.append(ed, del);
+      }
+      tr.append(el("td", { className: "desc", textContent: b.name }), el("td", { className: "n num", textContent: money(Number(b.amount)) }), el("td", { textContent: (FREQ[b.freq] || FREQ.monthly).label }),
+        el("td", { className: "num", textContent: b.next ? dfmt(b.next) : isActive(b) ? "—" : "Ended" }), el("td", { textContent: b.account || "" }),
+        el("td", { className: "num", textContent: b.start ? dfmt(b.start) : "" }), el("td", { className: "num", textContent: b.end ? dfmt(b.end) : "No end" }),
+        el("td", { className: "n num", textContent: money(r2(perMonth(b))) }), el("td", { className: "hide-sm small muted", textContent: b.note || "" }), acts);
+      body.append(tr);
+    }
+    const sb = $("billSoonBody"); sb.replaceChildren();
+    if (!soon.length) sb.append(el("tr", {}, [el("td", { colSpan: 5, className: "empty", textContent: "Nothing due in the next 60 days." })]));
+    let run = 0;
+    for (const x of soon) { run += Number(x.b.amount); sb.append(el("tr", {}, [el("td", { className: "num", textContent: dfmt(x.d) }), el("td", { textContent: x.b.name }), el("td", { textContent: x.b.account || "" }), el("td", { className: "n num", textContent: money(Number(x.b.amount)) }), el("td", { className: "n num", textContent: money(r2(run)) })])); }
+    $("bSave").disabled = !canWrite;
+  }
+  csvBuilders.bills = () => ["bills", ["Bill", "Amount", "How often", "First due", "Next due", "Paid from", "Start", "End", "Per month", "Note"],
+    billList().map((b) => [b.name, Number(b.amount).toFixed(2), (FREQ[b.freq] || FREQ.monthly).label, b.due, b.next, b.account, b.start, b.end || "", perMonth(b).toFixed(2), b.note || ""])];
+  $("bSave").addEventListener("click", () => saveBill());
+  $("bCancel").addEventListener("click", () => { resetBillForm(); billMsg(""); });
+  $("bDue").addEventListener("change", () => { if (!$("bStart").value) $("bStart").value = $("bDue").value; });
+
   // ---------- Tabs ----------
-  const VIEWS = ["overview", "needs", "transactions"];
+  const VIEWS = ["overview", "needs", "transactions", "bills"];
   function show(v) {
     if (!VIEWS.includes(v)) v = "overview";
     for (const x of VIEWS) { $("tab-" + x).setAttribute("aria-selected", String(x === v)); $("view-" + x).hidden = x !== v; }
     if (location.hash.slice(1) !== v) history.replaceState(null, "", "#" + v);
-    if (v === "overview") renderOverview(); else if (v === "needs") renderNeeds(); else renderAll();
+    if (v === "overview") renderOverview(); else if (v === "needs") renderNeeds(); else if (v === "bills") { fillBillAccounts(); renderBills(); } else renderAll();
   }
   for (const b of document.querySelectorAll(".tab")) b.addEventListener("click", () => show(b.dataset.view));
   window.addEventListener("hashchange", () => show(location.hash.slice(1)));
@@ -1018,6 +1165,7 @@
       fillFilters(); renderEverything();
     }, () => { canWrite = false; renderEverything(); });
     if (db) db.collection("tagChanges").onSnapshot((snap) => { tagChanges = {}; for (const d of snap.docs) tagChanges[d.id] = d.data(); fillTagControls(); renderEverything(); }, () => {});
+    if (db) db.collection("bills").onSnapshot((snap) => { bills = {}; for (const d of snap.docs) bills[d.id] = d.data(); renderBills(); }, () => {});
     if (db) db.collection("tags").onSnapshot((snap) => { newTags = {}; for (const d of snap.docs) newTags[d.id] = d.data(); fillTagControls(); renderEverything(); }, () => {});
     renderEverything();
   }
