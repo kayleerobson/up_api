@@ -299,7 +299,9 @@
   const pendingAdds = (t) => { const c = tagChanges[t.id]; return c && c.status !== "failed" && c.status !== "applied" ? c.add || [] : []; };
   const allTags = (t) => [...new Set([...(t.tags || []), ...pendingAdds(t)])];
   const tagDocId = (name) => name.toLowerCase().replace(/[^a-z0-9_\-.~:@+]/g, "_").slice(0, 150) || "tag";
-  const ov = { month: "", who: "", cat: "", account: "" };
+  // The overview opens on the current month; "All months" stays available in the Month list.
+  const NOW_MONTH = (() => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); })();
+  const ov = { month: NOW_MONTH, who: "", cat: "", account: "" };
 
   // ---------- Classification ----------
   const eff = (t) => {
@@ -402,7 +404,7 @@
 
   function renderOverview() {
     // filters
-    const months = [...new Set(tx.map((t) => t.month))].sort().reverse();
+    const months = [...new Set([NOW_MONTH, ...tx.map((t) => t.month)])].sort().reverse();
     $("oMonth").replaceChildren(el("option", { value: "", textContent: "All months" }), ...months.map((m) => el("option", { value: m, textContent: mfmt(m, true) })));
     $("oMonth").value = ov.month;
     const whos = [...new Set(tx.map((t) => t.spentBy))].sort();
@@ -974,7 +976,7 @@
   $("oWho").addEventListener("change", (e) => { ov.who = e.target.value; renderOverview(); });
   $("oAccount").addEventListener("change", (e) => { ov.account = e.target.value; renderOverview(); });
   $("oCatChip").addEventListener("click", () => { ov.cat = ""; renderOverview(); });
-  $("oReset").addEventListener("click", () => { ov.month = ov.who = ov.cat = ov.account = ""; renderOverview(); });
+  $("oReset").addEventListener("click", () => { ov.who = ov.cat = ov.account = ""; ov.month = NOW_MONTH; renderOverview(); });
   for (const id of ["needsDir", "needsWho", "needsQ"]) $(id).addEventListener("input", renderNeeds);
   for (const id of ["fWho", "fSub", "fAccount", "fTag", "fDir", "fFrom", "fTo", "fMin", "fMax", "fQ"]) $(id).addEventListener("input", renderAll);
   $("fParent").addEventListener("input", () => { fillSub(); renderAll(); });
