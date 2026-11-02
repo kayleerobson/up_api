@@ -344,7 +344,8 @@
     <div class="card" id="bill-form-card">
       <div class="card-head"><div><h2 id="billFormTitle">Add a bill</h2><p class="note">Enter a bill once with how often it repeats. The start date is the first payment; the next due date is worked out from it and how often it repeats. Leave the end date empty for bills with no end.</p></div></div>
       <div class="billform">
-        <div class="field"><label class="label" for="bName">Bill</label><input id="bName" type="text" maxlength="80" placeholder="e.g. Electricity (AGL)"></div>
+        <div class="field"><label class="label" for="bName">Bill</label><input id="bName" type="text" maxlength="80" placeholder="e.g. Electricity"></div>
+        <div class="field"><label class="label" for="bFrom">From (who it's paid to)</label><input id="bFrom" type="text" maxlength="80" placeholder="e.g. AGL"></div>
         <div class="field"><label class="label" for="bAmount">Amount $</label><input id="bAmount" type="number" min="0" step="0.01" inputmode="decimal"></div>
         <div class="field"><label class="label" for="bFreq">How often</label><select id="bFreq"><option value="weekly">Weekly</option><option value="fortnightly">Fortnightly</option><option value="monthly" selected>Monthly (same date as start)</option><option value="monthly-day">Monthly on a set day</option><option value="monthly-weekday">Monthly on a set weekday</option><option value="quarterly">Quarterly</option><option value="half-yearly">Every 6 months</option><option value="yearly">Yearly</option><option value="once">Once</option></select></div>
         <div class="field" id="bDayWrap" hidden><label class="label" for="bDay">Day of the month</label><select id="bDay"><option value="1">1st</option><option value="2">2nd</option><option value="3">3rd</option><option value="4">4th</option><option value="5">5th</option><option value="6">6th</option><option value="7">7th</option><option value="8">8th</option><option value="9">9th</option><option value="10">10th</option><option value="11">11th</option><option value="12">12th</option><option value="13">13th</option><option value="14">14th</option><option value="15">15th</option><option value="16">16th</option><option value="17">17th</option><option value="18">18th</option><option value="19">19th</option><option value="20">20th</option><option value="21">21st</option><option value="22">22nd</option><option value="23">23rd</option><option value="24">24th</option><option value="25">25th</option><option value="26">26th</option><option value="27">27th</option><option value="28">28th</option><option value="29">29th</option><option value="30">30th</option><option value="31">31st</option><option value="last">Last day</option></select></div>
@@ -361,7 +362,7 @@
 
     <div class="card" id="bill-list">
       <div class="card-head"><div><h3>Your bills</h3><p class="note">Sorted by next due date. Edit or delete a bill from its row.</p></div><button class="btn ghost csv" type="button" data-csv="bills">Download CSV</button></div>
-      <div class="tablebox"><table><thead><tr><th>Bill</th><th class="n">Amount</th><th>How often</th><th>Next due</th><th>Paid from</th><th>Start</th><th>End</th><th class="n">Per month</th><th class="hide-sm">Note</th><th></th></tr></thead><tbody id="billBody"></tbody></table></div>
+      <div class="tablebox"><table><thead><tr><th>Bill</th><th>From</th><th class="n">Amount</th><th>How often</th><th>Next due</th><th>Paid from</th><th>Start</th><th>End</th><th class="n">Per month</th><th class="hide-sm">Note</th><th></th></tr></thead><tbody id="billBody"></tbody></table></div>
     </div>
 
     <div class="card" id="bill-upcoming">
@@ -1125,14 +1126,14 @@
   function billMsg(text, bad) { const m = $("bMsg"); m.textContent = text; m.className = "small " + (bad ? "status-bad" : "muted"); m.hidden = !text; }
   function resetBillForm() {
     editingBill = null;
-    for (const id of ["bName", "bAmount", "bStart", "bEnd", "bNote"]) $(id).value = "";
+    for (const id of ["bName", "bFrom", "bAmount", "bStart", "bEnd", "bNote"]) $(id).value = "";
     $("bFreq").value = "monthly"; $("bDay").value = "1"; $("bNth").value = "1"; $("bWd").value = "1"; syncFreqFields(); fillBillAccounts();
     $("billFormTitle").textContent = "Add a bill"; $("bSave").textContent = "Add bill"; $("bCancel").hidden = true;
   }
   function editBill(id) {
     const b = bills[id]; if (!b) return;
     editingBill = id;
-    $("bName").value = b.name || ""; $("bAmount").value = b.amount ?? ""; $("bFreq").value = b.freq || "monthly"; $("bDay").value = String(b.day ?? "1"); $("bNth").value = String(b.nth ?? "1"); $("bWd").value = String(b.weekday ?? "1"); syncFreqFields();
+    $("bName").value = b.name || ""; $("bFrom").value = b.from || ""; $("bAmount").value = b.amount ?? ""; $("bFreq").value = b.freq || "monthly"; $("bDay").value = String(b.day ?? "1"); $("bNth").value = String(b.nth ?? "1"); $("bWd").value = String(b.weekday ?? "1"); syncFreqFields();
     fillBillAccounts(); $("bAccount").value = b.account || ""; $("bStart").value = b.start || b.due || ""; $("bEnd").value = b.end || ""; $("bNote").value = b.note || "";
     $("billFormTitle").textContent = "Edit " + (b.name || "bill"); $("bSave").textContent = "Save changes"; $("bCancel").hidden = false; billMsg("");
     $("bill-form-card").scrollIntoView({ block: "start" }); $("bName").focus();
@@ -1146,7 +1147,7 @@
     if (!start) { billMsg("Pick the start date (the first payment).", true); $("bStart").focus(); return; }
     if (end && end < start) { billMsg("The end date is before the start date.", true); $("bEnd").focus(); return; }
     const freq = $("bFreq").value;
-    const data = { name, amount: r2(amount), freq, day: freq === "monthly-day" ? ($("bDay").value === "last" ? "last" : Number($("bDay").value)) : null, nth: freq === "monthly-weekday" ? Number($("bNth").value) : null, weekday: freq === "monthly-weekday" ? Number($("bWd").value) : null, due, account: $("bAccount").value, start, end: end || null, note: $("bNote").value.trim(), updatedAt: new Date().toISOString() };
+    const data = { name, from: $("bFrom").value.trim(), amount: r2(amount), freq, day: freq === "monthly-day" ? ($("bDay").value === "last" ? "last" : Number($("bDay").value)) : null, nth: freq === "monthly-weekday" ? Number($("bNth").value) : null, weekday: freq === "monthly-weekday" ? Number($("bWd").value) : null, due, account: $("bAccount").value, start, end: end || null, note: $("bNote").value.trim(), updatedAt: new Date().toISOString() };
     $("bSave").disabled = true;
     try {
       if (editingBill) await db.doc("bills/" + editingBill).set({ ...bills[editingBill], ...data });
@@ -1171,7 +1172,7 @@
     $("bSoon").textContent = money(r2(in30.reduce((s, x) => s + Number(x.b.amount), 0)), 0); $("bSoonN").textContent = in30.length;
     $("bCount").textContent = active.length;
     const body = $("billBody"); body.replaceChildren();
-    if (!list.length) body.append(el("tr", {}, [el("td", { colSpan: 10, className: "empty", textContent: canWrite ? "No bills yet. Add your first one above." : "No bills yet." })]));
+    if (!list.length) body.append(el("tr", {}, [el("td", { colSpan: 11, className: "empty", textContent: canWrite ? "No bills yet. Add your first one above." : "No bills yet." })]));
     for (const b of list) {
       const tr = el("tr", { className: isActive(b) ? "" : "dim" });
       const acts = el("td", {});
@@ -1180,7 +1181,7 @@
         const del = el("button", { className: "rowbtn danger", type: "button", textContent: confirmDelete === b.id ? "Confirm delete" : "Delete" }); del.addEventListener("click", () => deleteBill(b.id).catch(() => {}));
         acts.append(ed, del);
       }
-      tr.append(el("td", { className: "desc", textContent: b.name }), el("td", { className: "n num", textContent: money(Number(b.amount)) }), el("td", { textContent: freqLabel(b) }),
+      tr.append(el("td", { className: "desc", textContent: b.name }), el("td", { textContent: b.from || "" }), el("td", { className: "n num", textContent: money(Number(b.amount)) }), el("td", { textContent: freqLabel(b) }),
         el("td", { className: "num", textContent: b.next ? dfmt(b.next) : isActive(b) ? "—" : "Ended" }), el("td", { textContent: b.account || "" }),
         el("td", { className: "num", textContent: b.start ? dfmt(b.start) : "" }), el("td", { className: "num", textContent: b.end ? dfmt(b.end) : "No end" }),
         el("td", { className: "n num", textContent: money(r2(perMonth(b))) }), el("td", { className: "hide-sm small muted", textContent: b.note || "" }), acts);
@@ -1192,8 +1193,8 @@
     for (const x of soon) { run += Number(x.b.amount); sb.append(el("tr", {}, [el("td", { className: "num", textContent: dfmt(x.d) }), el("td", { textContent: x.b.name }), el("td", { textContent: x.b.account || "" }), el("td", { className: "n num", textContent: money(Number(x.b.amount)) }), el("td", { className: "n num", textContent: money(r2(run)) })])); }
     $("bSave").disabled = !canWrite;
   }
-  csvBuilders.bills = () => ["bills", ["Bill", "Amount", "How often", "Next due", "Paid from", "Start", "End", "Per month", "Note"],
-    billList().map((b) => [b.name, Number(b.amount).toFixed(2), freqLabel(b), b.next, b.account, b.start, b.end || "", perMonth(b).toFixed(2), b.note || ""])];
+  csvBuilders.bills = () => ["bills", ["Bill", "From", "Amount", "How often", "Next due", "Paid from", "Start", "End", "Per month", "Note"],
+    billList().map((b) => [b.name, b.from || "", Number(b.amount).toFixed(2), freqLabel(b), b.next, b.account, b.start, b.end || "", perMonth(b).toFixed(2), b.note || ""])];
   function syncFreqFields() { const f = $("bFreq").value; $("bDayWrap").hidden = f !== "monthly-day"; $("bNthWrap").hidden = $("bWdWrap").hidden = f !== "monthly-weekday"; }
   $("bFreq").addEventListener("change", syncFreqFields);
   $("bSave").addEventListener("click", () => saveBill());
