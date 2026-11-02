@@ -342,14 +342,13 @@
     </div>
 
     <div class="card" id="bill-form-card">
-      <div class="card-head"><div><h2 id="billFormTitle">Add a bill</h2><p class="note">Enter a bill once with how often it repeats. The next due date is worked out from the first due date. Leave the end date empty for bills with no end.</p></div></div>
+      <div class="card-head"><div><h2 id="billFormTitle">Add a bill</h2><p class="note">Enter a bill once with how often it repeats. The start date is the first payment; the next due date is worked out from it and how often it repeats. Leave the end date empty for bills with no end.</p></div></div>
       <div class="billform">
         <div class="field"><label class="label" for="bName">Bill</label><input id="bName" type="text" maxlength="80" placeholder="e.g. Electricity (AGL)"></div>
         <div class="field"><label class="label" for="bAmount">Amount $</label><input id="bAmount" type="number" min="0" step="0.01" inputmode="decimal"></div>
         <div class="field"><label class="label" for="bFreq">How often</label><select id="bFreq"><option value="weekly">Weekly</option><option value="fortnightly">Fortnightly</option><option value="monthly" selected>Monthly</option><option value="quarterly">Quarterly</option><option value="half-yearly">Every 6 months</option><option value="yearly">Yearly</option><option value="once">Once</option></select></div>
-        <div class="field"><label class="label" for="bDue">First due date</label><input id="bDue" type="date"></div>
         <div class="field"><label class="label" for="bAccount">Paid from</label><select id="bAccount"></select></div>
-        <div class="field"><label class="label" for="bStart">Start</label><input id="bStart" type="date"></div>
+        <div class="field"><label class="label" for="bStart">Start (first payment)</label><input id="bStart" type="date"></div>
         <div class="field"><label class="label" for="bEnd">End (optional)</label><input id="bEnd" type="date"></div>
         <div class="field"><label class="label" for="bNote">Note (optional)</label><input id="bNote" type="text" maxlength="120" placeholder="e.g. Direct debit, varies"></div>
         <div class="actions"><button class="btn" id="bSave" type="button">Add bill</button><button class="btn ghost" id="bCancel" type="button" hidden>Cancel</button></div>
@@ -1110,25 +1109,25 @@
   function billMsg(text, bad) { const m = $("bMsg"); m.textContent = text; m.className = "small " + (bad ? "status-bad" : "muted"); m.hidden = !text; }
   function resetBillForm() {
     editingBill = null;
-    for (const id of ["bName", "bAmount", "bDue", "bStart", "bEnd", "bNote"]) $(id).value = "";
+    for (const id of ["bName", "bAmount", "bStart", "bEnd", "bNote"]) $(id).value = "";
     $("bFreq").value = "monthly"; fillBillAccounts();
     $("billFormTitle").textContent = "Add a bill"; $("bSave").textContent = "Add bill"; $("bCancel").hidden = true;
   }
   function editBill(id) {
     const b = bills[id]; if (!b) return;
     editingBill = id;
-    $("bName").value = b.name || ""; $("bAmount").value = b.amount ?? ""; $("bFreq").value = b.freq || "monthly"; $("bDue").value = b.due || "";
-    fillBillAccounts(); $("bAccount").value = b.account || ""; $("bStart").value = b.start || ""; $("bEnd").value = b.end || ""; $("bNote").value = b.note || "";
+    $("bName").value = b.name || ""; $("bAmount").value = b.amount ?? ""; $("bFreq").value = b.freq || "monthly";
+    fillBillAccounts(); $("bAccount").value = b.account || ""; $("bStart").value = b.start || b.due || ""; $("bEnd").value = b.end || ""; $("bNote").value = b.note || "";
     $("billFormTitle").textContent = "Edit " + (b.name || "bill"); $("bSave").textContent = "Save changes"; $("bCancel").hidden = false; billMsg("");
     $("bill-form-card").scrollIntoView({ block: "start" }); $("bName").focus();
   }
   async function saveBill() {
     if (!db || !canWrite) { billMsg("Only editors can add or change bills.", true); return; }
-    const name = $("bName").value.trim(), amount = parseFloat($("bAmount").value), due = $("bDue").value;
-    const start = $("bStart").value || due, end = $("bEnd").value;
+    const name = $("bName").value.trim(), amount = parseFloat($("bAmount").value);
+    const start = $("bStart").value, due = start, end = $("bEnd").value;
     if (!name) { billMsg("Give the bill a name.", true); $("bName").focus(); return; }
     if (!(amount > 0)) { billMsg("Enter an amount above $0.", true); $("bAmount").focus(); return; }
-    if (!due) { billMsg("Pick the first due date.", true); $("bDue").focus(); return; }
+    if (!start) { billMsg("Pick the start date (the first payment).", true); $("bStart").focus(); return; }
     if (end && end < start) { billMsg("The end date is before the start date.", true); $("bEnd").focus(); return; }
     const data = { name, amount: r2(amount), freq: $("bFreq").value, due, account: $("bAccount").value, start, end: end || null, note: $("bNote").value.trim(), updatedAt: new Date().toISOString() };
     $("bSave").disabled = true;
@@ -1176,11 +1175,10 @@
     for (const x of soon) { run += Number(x.b.amount); sb.append(el("tr", {}, [el("td", { className: "num", textContent: dfmt(x.d) }), el("td", { textContent: x.b.name }), el("td", { textContent: x.b.account || "" }), el("td", { className: "n num", textContent: money(Number(x.b.amount)) }), el("td", { className: "n num", textContent: money(r2(run)) })])); }
     $("bSave").disabled = !canWrite;
   }
-  csvBuilders.bills = () => ["bills", ["Bill", "Amount", "How often", "First due", "Next due", "Paid from", "Start", "End", "Per month", "Note"],
-    billList().map((b) => [b.name, Number(b.amount).toFixed(2), (FREQ[b.freq] || FREQ.monthly).label, b.due, b.next, b.account, b.start, b.end || "", perMonth(b).toFixed(2), b.note || ""])];
+  csvBuilders.bills = () => ["bills", ["Bill", "Amount", "How often", "Next due", "Paid from", "Start", "End", "Per month", "Note"],
+    billList().map((b) => [b.name, Number(b.amount).toFixed(2), (FREQ[b.freq] || FREQ.monthly).label, b.next, b.account, b.start, b.end || "", perMonth(b).toFixed(2), b.note || ""])];
   $("bSave").addEventListener("click", () => saveBill());
   $("bCancel").addEventListener("click", () => { resetBillForm(); billMsg(""); });
-  $("bDue").addEventListener("change", () => { if (!$("bStart").value) $("bStart").value = $("bDue").value; });
 
   // ---------- Tabs ----------
   const VIEWS = ["overview", "needs", "transactions", "bills"];
