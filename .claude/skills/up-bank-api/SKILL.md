@@ -51,7 +51,7 @@ Up's own LLM reference is saved at `reference/llms.txt` (from https://developer.
 
 ## The 2Up Money page
 
-- Artifact: https://claude.ai/artifact/AuQZD2GhnqQQbnxAcQpHu1 (plain page with `db`, `user`, `downloads` and the `mcp` capability for Claude Code Remote `fire_trigger`). Kaylee Brand colours, light only.
+- Artifact: https://claude.ai/artifact/AuQZD2GhnqQQbnxAcQpHu1 (plain page with `db`, `user`, `downloads` and the `mcp` capability for Claude Code Remote `fire_trigger`). Kaylee Brand v2 colours (cobalt + coral on cool white), light only.
 - Page source: `tools/up_money/page/index.html`. Data files it fetches: `data/transactions.json`, `data/categories.json`, `data/balances.json`, `data/tags.json`, built by `tools/up_money/export.py`.
 - Its database (Artifact database, `ArtifactData` tool):
   - `changes/<txId>`: `{txId, to (child category id or null to remove), from, status}`
