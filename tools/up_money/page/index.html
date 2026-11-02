@@ -178,6 +178,8 @@
   .incbar .field { width: 11rem; }
   .sumtable td, .sumtable th { padding: 6px 8px; }
   .sumtable tr.total td { font-weight: 600; border-top: 1px solid var(--ink); }
+  td.num { white-space: nowrap; }
+  .ref { max-width: 6.5rem; overflow-wrap: anywhere; }
   .rowbtn { font: inherit; font-size: 12px; background: none; border: 0; padding: 0 6px 0 0; color: var(--cobalt); text-decoration: underline; cursor: pointer; }
   .rowbtn.danger { color: var(--negative); }
   details.multi { position: relative; }
@@ -1057,7 +1059,7 @@
       const how = [t.type, t.cardMethod].filter(Boolean).join(" · ") + (t.foreign ? " · " + t.foreign : "") + (t.status === "Held" ? " · Pending" : "");
       tr.append(el("td", { className: "num", textContent: dfmt(t.date) }), el("td", { textContent: t.account }), el("td", { textContent: t.spentBy }),
         el("td", {}, [el("div", { className: "desc", textContent: t.description }), t.transferAccount ? el("div", { className: "small muted", textContent: (t.amount < 0 ? "To " : "From ") + t.transferAccount }) : ""]),
-        el("td", { className: "hide-sm", textContent: t.reference }), el("td", { className: "hide-sm small muted", textContent: how }),
+        el("td", { className: "hide-sm" }, [el("div", { className: "ref", textContent: t.reference })]), el("td", { className: "hide-sm small muted", textContent: how }),
         el("td", { className: "n num" + (t.amount > 0 ? " in" : ""), textContent: (t.amount > 0 ? "+" : "") + money(t.amount) }),
         el("td", { textContent: p }), el("td", { textContent: s }), el("td", {}, [tagCell(t)]), el("td", {}, [change]));
       frag.append(tr);
