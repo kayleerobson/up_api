@@ -4,7 +4,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,600&family=Fraunces:opsz,wght@9..144,600&display=swap">
 <style>
   /* Kaylee Brand v2, dashboard palette (cobalt + coral), exact brand tokens. Light only, by the brand's rule.
-     Layout: header, then four tabs (Dashboard / Needs a category / All transactions / Bills). */
+     Layout: hideable sidebar (Dashboard / Transactions / Budget building) beside the main column. */
   :root {
     --surface: #F7FAFC; --raised: #FFFFFF; --ink: #14213D; --muted: #4A5568; --hairline: #DCE4EA;
     --cobalt: #005F99; --cobalt-tint: #E5F0F7; --coral: #FF6B5B; --coral-deep: #B83A2C;
@@ -43,6 +43,32 @@
   .link { font: inherit; font-size: 13px; background: none; border: 0; padding: 0; color: var(--muted); text-decoration: underline; cursor: pointer; }
   .chip { font: inherit; font-size: 12px; font-weight: 600; line-height: 18px; border-radius: 999px; border: 1px solid var(--cobalt); color: var(--cobalt); background: var(--cobalt-tint); padding: 3px 10px; cursor: pointer; }
 
+  .app { display: grid; grid-template-columns: 15rem minmax(0, 1fr); min-height: 100vh; }
+  .app.collapsed { grid-template-columns: 0 minmax(0, 1fr); }
+  .side { position: sticky; top: 0; align-self: start; height: 100vh; box-sizing: border-box; overflow-y: auto; background: var(--raised); border-right: 1px solid var(--hairline); padding: calc(24px + env(safe-area-inset-top, 0px)) 12px 24px max(12px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 2px; }
+  .app.collapsed .side { visibility: hidden; padding: 0; border: 0; overflow: hidden; }
+  .side-head { display: flex; align-items: center; justify-content: space-between; padding: 0 8px 12px; }
+  .side-title { font-family: var(--serif); font-weight: 600; font-size: 17px; }
+  .navitem { font: inherit; font-size: 14px; line-height: 20px; text-align: left; display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; background: none; border: 0; border-radius: var(--r-sm); padding: 7px 8px; color: var(--ink); cursor: pointer; }
+  .navitem.sub { padding-left: 20px; }
+  .navitem:hover { background: var(--surface); }
+  .navitem[aria-current="page"] { background: var(--cobalt-tint); color: var(--cobalt); font-weight: 600; }
+  .navitem:focus-visible, .iconbtn:focus-visible { outline: 2px solid var(--cobalt); outline-offset: 1px; }
+  .navgroup { font-size: 12px; line-height: 16px; font-weight: 600; color: var(--muted); padding: 16px 8px 4px; }
+  .navsoon { font-size: 12px; color: var(--muted); padding: 4px 8px 4px 20px; }
+  .iconbtn { font: inherit; font-size: 20px; line-height: 20px; background: none; border: 0; color: var(--muted); cursor: pointer; padding: 4px; border-radius: var(--r-sm); }
+  .iconbtn.menu { display: inline-grid; gap: 4px; padding: 8px 6px; width: 32px; }
+  .iconbtn.menu span { display: block; height: 2px; background: var(--ink); border-radius: 1px; }
+  .head { grid-template-columns: auto 1fr; align-items: center; column-gap: 12px; }
+  .head .lede { grid-column: 1 / -1; }
+  .scrim { position: fixed; inset: 0; z-index: 13; background: rgba(20, 33, 61, .35); }
+  @media (max-width: 900px) {
+    .app, .app.collapsed { grid-template-columns: minmax(0, 1fr); }
+    .side { position: fixed; z-index: 14; left: 0; top: 0; bottom: 0; width: min(17rem, 85vw); transition: transform .2s ease; }
+    .app.collapsed .side { transform: translateX(-100%); visibility: hidden; }
+    .app:not(.collapsed) .side { transform: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { .side { transition: none; } }
   .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--hairline); flex-wrap: wrap; }
   .tab { font: inherit; font-weight: 600; font-size: 15px; background: none; border: 0; border-bottom: 2px solid transparent; padding: 8px 12px; color: var(--muted); cursor: pointer; margin-bottom: -1px; }
   .tab[aria-selected="true"] { color: var(--cobalt); border-bottom-color: var(--cobalt); }
@@ -147,21 +173,28 @@
   @media (max-width: 640px) { input[type="search"] { width: 100%; } .hide-sm { display: none; } .stat { font-size: 30px; line-height: 36px; } }
 </style>
 
+<div class="app" id="app">
+  <nav class="side" id="side" aria-label="Money HQ sections">
+    <div class="side-head"><span class="side-title">Money HQ</span><button class="iconbtn" id="sideClose" type="button" aria-label="Hide menu">×</button></div>
+    <button class="navitem" id="tab-overview" data-view="overview" type="button">Dashboard</button>
+    <p class="navgroup">Transactions</p>
+    <button class="navitem sub" id="tab-transactions" data-view="transactions" type="button">All transactions</button>
+    <button class="navitem sub" id="tab-needs" data-view="needs" type="button">Transactions to categorise <span class="pill num" id="needsBadge">0</span></button>
+    <p class="navgroup">Budget building</p>
+    <button class="navitem sub" id="tab-bills" data-view="bills" type="button">Bills</button>
+    <p class="navsoon">More coming soon</p>
+  </nav>
+  <div class="scrim" id="scrim" hidden></div>
 <div class="wrap">
   <header class="head">
-    <h1>Money HQ</h1>
+    <button class="iconbtn menu" id="sideToggle" type="button" aria-controls="side" aria-expanded="true" aria-label="Show or hide menu"><span></span><span></span><span></span></button>
+    <h1 id="pageTitle">Money HQ</h1>
     <p class="lede status-bad" id="lede" hidden></p>
   </header>
 
-  <div class="tabs" role="tablist" aria-label="Views">
-    <button class="tab" role="tab" id="tab-overview" data-view="overview" aria-controls="view-overview" aria-selected="true" type="button">Dashboard</button>
-    <button class="tab" role="tab" id="tab-needs" data-view="needs" aria-controls="view-needs" aria-selected="false" type="button">Needs a category <span class="pill num" id="needsBadge">0</span></button>
-    <button class="tab" role="tab" id="tab-transactions" data-view="transactions" aria-controls="view-transactions" aria-selected="false" type="button">All transactions</button>
-    <button class="tab" role="tab" id="tab-bills" data-view="bills" aria-controls="view-bills" aria-selected="false" type="button">Bills</button>
-  </div>
 
   <!-- ================= OVERVIEW ================= -->
-  <section id="view-overview" role="tabpanel" aria-labelledby="tab-overview" class="stack">
+  <section id="view-overview" aria-labelledby="pageTitle" class="stack">
     <div class="bar">
       <div class="field"><label class="label" for="oMonth">Month</label><select id="oMonth"></select></div>
       <div class="field"><span class="label" id="oAccLabel">Accounts</span><details class="multi" id="oAccount"><summary aria-labelledby="oAccLabel oAccSummary"><span id="oAccSummary">All accounts</span></summary><div class="multi-menu" id="oAccMenu" role="group" aria-label="Accounts to include"></div></details></div>
@@ -217,7 +250,7 @@
   </section>
 
   <!-- ================= NEEDS A CATEGORY ================= -->
-  <section id="view-needs" role="tabpanel" aria-labelledby="tab-needs" class="card" hidden>
+  <section id="view-needs" aria-labelledby="pageTitle" class="card" hidden>
     <div class="sync" role="region" aria-label="Category changes waiting to send">
       <div class="sync-msg">
         <p><span class="count num" id="stagedCount">0 changes</span> <span class="muted">to categories and tags ready to send to Up.</span></p>
@@ -229,7 +262,7 @@
       </div>
     </div>
     <div class="card-head">
-      <div><h2>Needs a category</h2>
+      <div><h2>Transactions to categorise</h2>
       <p class="note">Transactions Up lets you categorise that have no category yet. Tick several and set a category or add a tag in one go, or use the dropdown on each row. Transfers between Up accounts can't be categorised in Up, so they aren't listed.</p></div>
       <button class="btn ghost csv" type="button" data-csv="needs">Download CSV</button>
     </div>
@@ -255,10 +288,10 @@
   </section>
 
   <!-- ================= ALL TRANSACTIONS ================= -->
-  <section id="view-transactions" role="tabpanel" aria-labelledby="tab-transactions" class="card" hidden>
+  <section id="view-transactions" aria-labelledby="pageTitle" class="card" hidden>
     <div class="card-head">
       <div><h2>All transactions</h2>
-      <p class="note">Every transaction in your joint accounts and savers. Change a category or add a tag on any row Up allows; it joins the changes waiting to send, which you send to Up from the Needs a category tab.</p></div>
+      <p class="note">Every transaction in your joint accounts and savers. Change a category or add a tag on any row Up allows; it joins the changes waiting to send, which you send to Up from Transactions to categorise.</p></div>
       <button class="btn ghost csv" type="button" data-csv="transactions">Download CSV</button>
     </div>
     <div class="bar">
@@ -287,7 +320,7 @@
   </section>
 
   <!-- ================= BILLS ================= -->
-  <section id="view-bills" role="tabpanel" aria-labelledby="tab-bills" class="stack" hidden>
+  <section id="view-bills" aria-labelledby="pageTitle" class="stack" hidden>
     <div class="tiles" aria-label="Bill totals">
       <div class="tile"><p class="label">Bills per month</p><span class="stat" id="bMonthly">—</span><p class="small muted">Every active bill, averaged to a month</p></div>
       <div class="tile"><p class="label">Bills per year</p><span class="stat" id="bYearly">—</span><p class="small muted">The same bills over 12 months</p></div>
@@ -329,6 +362,7 @@
   </aside>
 
   <p class="note">Data pulled from Up on <span id="dataDate">—</span>. Categories you send are applied in Up first, then this page's data is refreshed.</p>
+</div>
 </div>
 
 <script>
@@ -1139,11 +1173,26 @@
   const VIEWS = ["overview", "needs", "transactions", "bills"];
   function show(v) {
     if (!VIEWS.includes(v)) v = "overview";
-    for (const x of VIEWS) { $("tab-" + x).setAttribute("aria-selected", String(x === v)); $("view-" + x).hidden = x !== v; }
+    for (const x of VIEWS) { if (x === v) $("tab-" + x).setAttribute("aria-current", "page"); else $("tab-" + x).removeAttribute("aria-current"); $("view-" + x).hidden = x !== v; }
+    if (narrow()) setSide(false);
     if (location.hash.slice(1) !== v) history.replaceState(null, "", "#" + v);
     if (v === "overview") renderOverview(); else if (v === "needs") renderNeeds(); else if (v === "bills") { fillBillAccounts(); renderBills(); } else renderAll();
   }
-  for (const b of document.querySelectorAll(".tab")) b.addEventListener("click", () => show(b.dataset.view));
+  for (const b of document.querySelectorAll(".navitem")) b.addEventListener("click", () => show(b.dataset.view));
+  // Sidebar: open by default on wide screens, closed on phones; the choice is remembered on this device.
+  const narrow = () => window.matchMedia("(max-width: 900px)").matches;
+  function setSide(open, remember) {
+    $("app").classList.toggle("collapsed", !open);
+    $("sideToggle").setAttribute("aria-expanded", String(open));
+    $("scrim").hidden = !(open && narrow());
+    if (remember) { try { localStorage.setItem("moneyhq.side", open ? "open" : "closed"); } catch (e) { /* storage unavailable */ } }
+  }
+  let savedSide = null; try { savedSide = localStorage.getItem("moneyhq.side"); } catch (e) { /* storage unavailable */ }
+  setSide(narrow() ? false : savedSide !== "closed");
+  $("sideToggle").addEventListener("click", () => setSide($("app").classList.contains("collapsed"), !narrow()));
+  $("sideClose").addEventListener("click", () => { setSide(false, !narrow()); $("sideToggle").focus(); });
+  $("scrim").addEventListener("click", () => setSide(false));
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && narrow() && !$("app").classList.contains("collapsed")) setSide(false); });
   window.addEventListener("hashchange", () => show(location.hash.slice(1)));
 
   // ---------- Wiring ----------
