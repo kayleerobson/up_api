@@ -133,6 +133,15 @@
   .billform .actions { display: flex; gap: 8px; flex-wrap: wrap; }
   .rowbtn { font: inherit; font-size: 12px; background: none; border: 0; padding: 0 6px 0 0; color: var(--cobalt); text-decoration: underline; cursor: pointer; }
   .rowbtn.danger { color: var(--negative); }
+  details.multi { position: relative; }
+  details.multi summary { list-style: none; cursor: pointer; font-size: 13px; line-height: 20px; color: var(--ink); background: var(--raised); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 5px 28px 5px 8px; min-width: 11rem; max-width: 18rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; }
+  details.multi summary::-webkit-details-marker { display: none; }
+  details.multi summary::after { content: ""; position: absolute; right: 10px; top: 50%; width: 6px; height: 6px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: translateY(-70%) rotate(45deg); }
+  details.multi summary:focus-visible { outline: 2px solid var(--cobalt); outline-offset: 2px; }
+  .multi-menu { position: absolute; z-index: 12; top: calc(100% + 4px); left: 0; min-width: 100%; background: var(--raised); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 6px; display: grid; gap: 2px; font-size: 13px; line-height: 20px; }
+  .multi-menu label { display: flex; gap: 8px; align-items: center; padding: 3px 6px; border-radius: var(--r-sm); cursor: pointer; white-space: nowrap; }
+  .multi-menu label:hover { background: var(--surface); }
+  .multi-menu .link { justify-self: start; padding: 3px 6px; }
   .empty { padding: 24px; text-align: center; color: var(--muted); }
   .note { font-size: 13px; line-height: 20px; color: var(--muted); max-width: 80ch; }
   @media (max-width: 640px) { input[type="search"] { width: 100%; } .hide-sm { display: none; } .stat { font-size: 30px; line-height: 36px; } }
@@ -155,7 +164,7 @@
   <section id="view-overview" role="tabpanel" aria-labelledby="tab-overview" class="stack">
     <div class="bar">
       <div class="field"><label class="label" for="oMonth">Month</label><select id="oMonth"></select></div>
-      <div class="field"><label class="label" for="oAccount">Account</label><select id="oAccount"></select></div>
+      <div class="field"><span class="label" id="oAccLabel">Accounts</span><details class="multi" id="oAccount"><summary aria-labelledby="oAccLabel oAccSummary"><span id="oAccSummary">All accounts</span></summary><div class="multi-menu" id="oAccMenu" role="group" aria-label="Accounts to include"></div></details></div>
       <div class="field"><label class="label" for="oWho">Spent by</label><select id="oWho"></select></div>
       <button class="chip" id="oCatChip" type="button" hidden></button>
       <button class="link" id="oReset" type="button">Reset filters</button>
@@ -166,7 +175,7 @@
       <div class="tile"><p class="label">Money out</p><span class="stat" id="tOut">—</span><p class="small muted" id="tOutNote">Everything spent or sent</p></div>
       <div class="tile"><p class="label">Net</p><span class="stat" id="tNet">—</span><p class="small muted">Money in minus money out</p></div>
       <div class="tile"><p class="label">Transfers to people</p><span class="stat" id="tTr">—</span><p class="small muted"><span id="tTrN">0</span> payments and transfers</p></div>
-      <div class="tile"><p class="label">Balance today</p><span class="stat" id="tBal">—</span><p class="small muted" id="tBalNote">All joint accounts and savers</p></div>
+      <div class="tile"><p class="label" id="tBalLabel">Balance today</p><span class="stat" id="tBal">—</span><p class="small muted" id="tBalNote">All joint accounts and savers</p></div>
     </div>
 
     <div class="grid2">
@@ -344,7 +353,10 @@
   const tagDocId = (name) => name.toLowerCase().replace(/[^a-z0-9_\-.~:@+]/g, "_").slice(0, 150) || "tag";
   // The overview opens on the current month; "All months" stays available in the Month list.
   const NOW_MONTH = (() => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); })();
-  const ov = { month: NOW_MONTH, who: "", cat: "", account: "" };
+  const ov = { month: NOW_MONTH, who: "", cat: "", accounts: [] };
+  // Account filter: an empty list means every joint account and saver.
+  const accOK = (a) => !ov.accounts.length || ov.accounts.includes(a);
+  const accText = () => !ov.accounts.length ? "All joint accounts and savers" : ov.accounts.length <= 2 ? ov.accounts.join(" and ") : ov.accounts.length + " accounts";
 
   // ---------- Classification ----------
   const eff = (t) => {
@@ -368,7 +380,7 @@
   // ---------- CSV ----------
   const csvCell = (v) => { const s = v === null || v === undefined ? "" : String(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   const toCSV = (head, rows) => [head, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
-  const stamp = () => (ov.month || "all-months") + (ov.account ? "-" + ov.account.toLowerCase().replace(/\s+/g, "-") : "") + (ov.who ? "-" + ov.who.toLowerCase().replace(/\s+/g, "-") : "");
+  const stamp = () => (ov.month || "all-months") + (ov.accounts.length ? "-" + ov.accounts.join("-").toLowerCase().replace(/\s+/g, "-") : "") + (ov.who ? "-" + ov.who.toLowerCase().replace(/\s+/g, "-") : "");
   const csvBuilders = {
     _spenders: () => ["2up-who-spent-" + stamp(), ["Spent by", "Card purchases", "Card spend", "Payments and transfers", "Total out"], spenderRows().map((r) => [r.who, r.cardCount, r.card.toFixed(2), r.other.toFixed(2), r.total.toFixed(2)])],
     subcats: () => pieMode === "category" ? ["2up-categories-" + stamp(), ["Category", "Count", "Amount"], catRows().map((r) => [r.category, r.count, r.amount.toFixed(2)])] : ["2up-subcategories-" + stamp(), ["Category", "Subcategory", "Count", "Amount"], subRows().map((r) => [r.category, r.sub, r.count, r.amount.toFixed(2)])],
@@ -392,9 +404,9 @@
   }
 
   // ---------- Overview data ----------
-  const inMonth = (t) => (!ov.month || t.month === ov.month) && (!ov.account || t.account === ov.account);
-  // With one account picked, moves to and from your other accounts count as money in or out for it.
-  const cls = (t) => (t.internal && ov.account ? { flow: t.amount >= 0 ? "In" : "Out", category: "Between your accounts", sub: t.description } : classify(t));
+  const inMonth = (t) => (!ov.month || t.month === ov.month) && accOK(t.account);
+  // With some accounts picked, moves to and from accounts outside the selection count as money in or out.
+  const cls = (t) => (t.internal && ov.accounts.length && !ov.accounts.includes(t.transferAccount) ? { flow: t.amount >= 0 ? "In" : "Out", category: "Between your accounts", sub: t.description } : classify(t));
   const outRows = () => tx.filter((t) => inMonth(t) && (!ov.who || t.spentBy === ov.who)).map((t) => ({ t, k: cls(t) })).filter((x) => x.k.flow === "Out");
   const group = (items, keyFn, init, add) => { const m = new Map(); for (const x of items) { const k = keyFn(x); const r = m.get(k) || init(x); add(r, x); m.set(k, r); } return [...m.values()]; };
   function spenderRows() {
@@ -423,7 +435,7 @@
     const months = [...new Set(tx.map((t) => t.month))].sort();
     return months.map((m) => {
       let inn = 0, out = 0;
-      for (const t of tx) { if (t.month !== m || (ov.account && t.account !== ov.account)) continue; const k = cls(t); if (k.flow === "In") inn += t.amount; else if (k.flow === "Out" && (!ov.who || t.spentBy === ov.who)) out -= t.amount; }
+      for (const t of tx) { if (t.month !== m || !accOK(t.account)) continue; const k = cls(t); if (k.flow === "In") inn += t.amount; else if (k.flow === "Out" && (!ov.who || t.spentBy === ov.who)) out -= t.amount; }
       return { month: m, moneyIn: r2(inn), moneyOut: r2(out) };
     });
   }
@@ -454,8 +466,14 @@
     $("oWho").replaceChildren(el("option", { value: "", textContent: "Anyone" }), ...whos.map((w) => el("option", { value: w, textContent: w })));
     $("oWho").value = ov.who;
     const accs = balances.map((b) => b.account);
-    $("oAccount").replaceChildren(el("option", { value: "", textContent: "All accounts" }), ...accs.map((a) => el("option", { value: a, textContent: a })));
-    $("oAccount").value = ov.account;
+    const menu = $("oAccMenu"), allBtn = el("button", { className: "link", type: "button", textContent: "All accounts" });
+    allBtn.addEventListener("click", () => { ov.accounts = []; renderOverview(); });
+    menu.replaceChildren(allBtn, ...accs.map((a) => {
+      const cb = el("input", { type: "checkbox", checked: ov.accounts.includes(a) });
+      cb.addEventListener("change", () => { ov.accounts = cb.checked ? [...ov.accounts, a] : ov.accounts.filter((x) => x !== a); ov.accounts.sort((x, y) => accs.indexOf(x) - accs.indexOf(y)); renderOverview(); });
+      return el("label", {}, [cb, a]);
+    }));
+    $("oAccSummary").textContent = ov.accounts.length ? accText() : "All accounts";
     $("oCatChip").hidden = !ov.cat; $("oCatChip").textContent = ov.cat ? ov.cat + "  ×" : "";
     $("oCatChip").setAttribute("aria-label", "Clear category filter " + ov.cat);
 
@@ -472,9 +490,11 @@
     $("tOutNote").textContent = ov.who ? "Spent or sent by " + ov.who : "Everything spent or sent";
     $("tNet").textContent = (net > 0 ? "+" : "") + money(net, 0); $("tNet").className = "stat " + (net >= 0 ? "good" : "bad");
     $("tTr").textContent = money(r2(-tr.reduce((s, x) => s + x.t.amount, 0)), 0); $("tTrN").textContent = tr.length;
-    $("tBal").textContent = money(r2(balances.filter((b) => !ov.account || b.account === ov.account).reduce((s, b) => s + Number(b.balance), 0)));
-    $("tBalNote").textContent = ov.account ? ov.account : "All joint accounts and savers";
-    $("balScope").textContent = ov.account ? ov.account : "all joint accounts and savers";
+    const cb = closingBalance();
+    $("tBalLabel").textContent = cb.today ? "Balance today" : "Closing balance";
+    $("tBal").textContent = money(cb.value);
+    $("tBalNote").textContent = (cb.today ? "" : "End of " + mfmt(ov.month, true) + " · ") + accText();
+    $("balScope").textContent = ov.accounts.length ? accText() : "all joint accounts and savers";
     const cr = catRows();
 
     drawBalance(); drawFlow();
@@ -531,12 +551,20 @@
   const addDays = (s, n) => { const d = new Date(s + "T00:00:00"); d.setDate(d.getDate() + n); return iso(d); };
   const monthRange = () => { if (!ov.month) return null; const [y, m] = ov.month.split("-").map(Number); return [ov.month + "-01", ov.month + "-" + String(new Date(y, m, 0).getDate()).padStart(2, "0")]; };
 
+  // Balance at the end of the selected month (today's balance for the current month or All months),
+  // worked back from today's balance by taking off everything after that month.
+  function closingBalance() {
+    const now = balances.filter((b) => accOK(b.account)).reduce((s, b) => s + Number(b.balance), 0);
+    if (!ov.month || ov.month >= NOW_MONTH) return { value: r2(now), today: true };
+    const end = monthRange()[1];
+    return { value: r2(now - tx.filter((t) => accOK(t.account) && t.date > end).reduce((s, t) => s + t.amount, 0)), today: false };
+  }
   function balanceSeries() {
-    const scope = tx.filter((t) => !ov.account || t.account === ov.account);
+    const scope = tx.filter((t) => accOK(t.account));
     if (!scope.length) return [];
     const net = new Map(); for (const t of scope) net.set(t.date, (net.get(t.date) || 0) + t.amount);
     const last = tx[0].date, first = scope.reduce((m, t) => (t.date < m ? t.date : m), last);
-    let bal = balances.filter((b) => !ov.account || b.account === ov.account).reduce((s, b) => s + Number(b.balance), 0);
+    let bal = balances.filter((b) => accOK(b.account)).reduce((s, b) => s + Number(b.balance), 0);
     const pts = [];
     for (let d = last; d >= first; d = addDays(d, -1)) { pts.push({ x: d, y: r2(bal) }); bal -= net.get(d) || 0; }
     pts.reverse();
@@ -548,7 +576,7 @@
     const key = (d) => { if (mr) return d; const x = new Date(d + "T00:00:00"); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return iso(x); };
     const m = new Map();
     for (const t of tx) {
-      if (ov.account && t.account !== ov.account) continue;
+      if (!accOK(t.account)) continue;
       if (mr && (t.date < mr[0] || t.date > mr[1])) continue;
       const k = cls(t); if (k.flow === "Internal") continue;
       const r = m.get(key(t.date)) || { x: key(t.date), in: 0, out: 0 };
@@ -684,7 +712,7 @@
   function openSlice(sl) {
     drawer.key = sl.key; drawer.parentKey = "";
     drawer.refresh = () => { const again = pieSlices().slices.find((x) => x.key === drawer.key); if (again) openSlice(again); else closeDrawer(); };
-    const scope = (ov.month ? mfmt(ov.month, true) : "All months") + (ov.account ? ", " + ov.account : "") + (ov.who ? ", spent by " + ov.who : "");
+    const scope = (ov.month ? mfmt(ov.month, true) : "All months") + (ov.accounts.length ? ", " + accText() : "") + (ov.who ? ", spent by " + ov.who : "");
     if (sl.other) {
       const rows = sl.rows.map((r) => { const tr = el("tr", { className: "click", tabIndex: 0 }, [el("td", { textContent: r.category }), el("td", { textContent: r.sub }), el("td", { className: "n num", textContent: r.count }), el("td", { className: "n num", textContent: money(r.amount) })]);
         const go = () => openSub(r, sl); tr.addEventListener("click", go); tr.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); }); return tr; });
@@ -697,7 +725,7 @@
   function openSub(r, fromOther) {
     if (fromOther) drawer.parentKey = fromOther.key;
     const items = outRows().filter((x) => x.k.category === r.category && x.k.sub === r.sub).map((x) => x.t).sort((a, b) => (a.date < b.date ? 1 : -1));
-    const scope = (ov.month ? mfmt(ov.month, true) : "All months") + (ov.account ? ", " + ov.account : "") + (ov.who ? ", spent by " + ov.who : "");
+    const scope = (ov.month ? mfmt(ov.month, true) : "All months") + (ov.accounts.length ? ", " + accText() : "") + (ov.who ? ", spent by " + ov.who : "");
     const rows = items.map((t) => el("tr", {}, [el("td", { className: "num", textContent: dfmt(t.date) }), el("td", {}, [el("div", { className: "desc", textContent: t.description }), t.reference ? el("div", { className: "small muted", textContent: t.reference }) : ""]), el("td", { textContent: t.spentBy }), el("td", { className: "n num", textContent: money(-t.amount) })]));
     setDrawer(r.sub, r.category, scope + " · " + money(r.amount) + " across " + r.count + " transactions.",
       [{ label: "Date" }, { label: "Where / who" }, { label: "Spent by" }, { label: "Amount", n: 1 }], rows,
@@ -708,7 +736,7 @@
     drawer.refresh = () => { if (peopleRows().some((r) => r.person === person)) openPerson(person); else closeDrawer(); };
     const items = outRows().filter((x) => x.k.category === "Transfers" && x.k.to === person).map((x) => x.t).sort((a, b) => (a.date < b.date ? 1 : -1));
     const total = r2(-items.reduce((s, t) => s + t.amount, 0));
-    const scope = (ov.month ? mfmt(ov.month, true) : "All months") + (ov.account ? ", " + ov.account : "") + (ov.who ? ", sent by " + ov.who : "");
+    const scope = (ov.month ? mfmt(ov.month, true) : "All months") + (ov.accounts.length ? ", " + accText() : "") + (ov.who ? ", sent by " + ov.who : "");
     const rows = items.map((t) => el("tr", {}, [el("td", { className: "num", textContent: dfmt(t.date) }), el("td", {}, [el("div", { textContent: t.reference || "—" }), el("div", { className: "small muted", textContent: t.account + " · " + t.type })]), el("td", { textContent: t.spentBy }), el("td", { className: "n num", textContent: money(-t.amount) })]));
     setDrawer("Transfer - " + person, "Transfers to people", scope + " · " + money(total) + " across " + items.length + " transfers.",
       [{ label: "Date" }, { label: "Reference" }, { label: "Sent by" }, { label: "Amount", n: 1 }], rows,
@@ -1121,9 +1149,10 @@
   // ---------- Wiring ----------
   $("oMonth").addEventListener("change", (e) => { ov.month = e.target.value; renderOverview(); });
   $("oWho").addEventListener("change", (e) => { ov.who = e.target.value; renderOverview(); });
-  $("oAccount").addEventListener("change", (e) => { ov.account = e.target.value; renderOverview(); });
+  document.addEventListener("click", (e) => { const d = $("oAccount"); if (d.open && !d.contains(e.target)) d.open = false; });
+  $("oAccount").addEventListener("keydown", (e) => { if (e.key === "Escape") { $("oAccount").open = false; $("oAccount").querySelector("summary").focus(); } });
   $("oCatChip").addEventListener("click", () => { ov.cat = ""; renderOverview(); });
-  $("oReset").addEventListener("click", () => { ov.who = ov.cat = ov.account = ""; ov.month = NOW_MONTH; renderOverview(); });
+  $("oReset").addEventListener("click", () => { ov.who = ov.cat = ""; ov.accounts = []; ov.month = NOW_MONTH; renderOverview(); });
   for (const id of ["needsDir", "needsWho", "needsQ"]) $(id).addEventListener("input", renderNeeds);
   for (const id of ["fWho", "fSub", "fAccount", "fTag", "fDir", "fFrom", "fTo", "fMin", "fMax", "fQ"]) $(id).addEventListener("input", renderAll);
   $("fParent").addEventListener("input", () => { fillSub(); renderAll(); });
