@@ -196,6 +196,7 @@
   .bud input.bc::placeholder { color: var(--muted); opacity: .6; }
   .bud tr.sec td { background: var(--surface); font-weight: 600; border-top: 1px solid var(--ink); }
   .bud tr.grp td { font-weight: 600; }
+  .bud .secbtn { font: inherit; font-weight: 600; background: none; border: 0; padding: 0; cursor: pointer; color: var(--ink); }
   .bud tr.grp button { font: inherit; background: none; border: 0; padding: 0; cursor: pointer; color: var(--ink); display: inline-flex; gap: 6px; align-items: center; }
   .bud tr.foot td { font-weight: 600; background: var(--cobalt-tint); }
   .bud td.ind { padding-left: 24px; }
@@ -1544,7 +1545,10 @@
 
   // ---------- Budget ----------
   // Rows are bills, spending categories and savers; columns are the pays in the month. Allocations live in budget/<YYYY-MM> as {alloc: {rowKey: {payKey: amount}}}.
-  const BUD = { months: {}, dirty: {}, timer: null, open: {} };
+  const BUD = { months: {}, dirty: {}, timer: null, open: {}, sec: {} };
+  // Savers, Bills and Spending can each be folded away; the choice is remembered on this device.
+  try { Object.assign(BUD.sec, JSON.parse(localStorage.getItem("moneyhq.budgetSections") || "{}")); } catch (e) { /* storage unavailable */ }
+  const secOpen = (k) => BUD.sec[k] !== false;
   const bdMonth = () => $("bdMonth").value || NOW_MONTH;
   const prevMonth = (m) => addMonths(m + "-01", -1).slice(0, 7);
   function budgetPays(m) {
@@ -1711,26 +1715,28 @@
       }
       return el("tr", {}, [first, row.last === null ? el("td") : lastLink(m, row.last, row.label, "Spent last month", [row.key]), ...cellInput(row), tot]); };
     const section = (key, title, rows) => { const cells = R.pays.map((p) => { const td = el("td", { className: "n num" }); (bdRefs.secTot[key] = bdRefs.secTot[key] || {})[p.key] = td; return td; }); const tot = el("td", { className: "n num" }); bdRefs.secTot[key]._ = tot; const lastTot = rows.reduce((s, r) => s + (r.last || 0), 0);
-      body.append(el("tr", { className: "sec" }, [el("td", { className: "stick", textContent: title }), el("td", { className: "n num", textContent: key === "spend" || key === "bills" ? money(r2(lastTot)) : "" }), ...cells, tot])); };
+      const open = secOpen(key), tb = el("button", { type: "button", className: "secbtn", textContent: (open ? "▾ " : "▸ ") + title }); tb.setAttribute("aria-expanded", String(open));
+      tb.addEventListener("click", () => { BUD.sec[key] = !open; try { localStorage.setItem("moneyhq.budgetSections", JSON.stringify(BUD.sec)); } catch (e) { /* storage unavailable */ } renderBudget(); });
+      body.append(el("tr", { className: "sec" }, [el("td", { className: "stick" }, [tb]), el("td", { className: "n num", textContent: key === "spend" || key === "bills" ? money(r2(lastTot)) : "" }), ...cells, tot])); };
     section("save", "Savers", R.saverRows);
     { const sug = R.saverRows.reduce((s, r) => s + (r.sug.kaylee || 0), 0), kn = R.pays.find((p) => p.key === "kaylee").net; body.lastChild.firstChild.append(el("span", { className: "sub", textContent: sug ? "Suggested from Kaylee's pay: " + money(sug, 0) + (kn > 0 ? " of " + money(kn, 0) + " (" + Math.round(sug / kn * 100) + "%)" : "") : "Savings savers only. Set targets, save-by dates and which pays they save from on the Savers tab" })); }
-    for (const r of R.saverRows) body.append(line(r));
+    if (secOpen("save")) for (const r of R.saverRows) body.append(line(r));
     section("bills", "Bills", R.billRows);
     { const rb = el("button", { type: "button", className: "btn ghost csv", textContent: "Refresh bills", style: "margin-left:12px" }); rb.disabled = !canWrite || !R.billRows.length;
       rb.title = "Re-work every bill's amounts from the latest bills, due dates and settings";
       rb.addEventListener("click", () => { let n = 0; for (const r of R.billRows) { setBillAlloc(m, r); n++; } renderBudget(); queueBudgetSave(m); $("bdMsg").textContent = "Refreshed " + n + " bills from the latest bill details. Saving…"; });
       body.lastChild.firstChild.append(rb); }
-    if (!R.billRows.length) body.append(el("tr", {}, [el("td", { colSpan: R.pays.length + 3, className: "small muted", textContent: "No bills yet. Add them on the Bills tab." })]));
+    if (secOpen("bills") && !R.billRows.length) body.append(el("tr", {}, [el("td", { colSpan: R.pays.length + 3, className: "small muted", textContent: "No bills yet. Add them on the Bills tab." })]));
     // Bills grouped under the saver that pays them (bills still needing a saver first), each group in due-date order.
     const savers = balances.filter((b) => b.kind === "Saver").map((b) => b.account), byNext = (a, b) => (a.next || "9999").localeCompare(b.next || "9999") || a.label.localeCompare(b.label);
-    for (const sv of ["", ...savers]) {
+    for (const sv of secOpen("bills") ? ["", ...savers] : []) {
       const rows = R.billRows.filter((r) => r.saver === sv).sort(byNext); if (!rows.length) continue;
       const tot = r2(rows.reduce((s, r) => s + Object.values(r.sug).reduce((a, v) => a + v, 0), 0));
       body.append(el("tr", { className: "bgrp" + (sv ? "" : " warn") }, [el("td", { className: "stick", colSpan: 2, textContent: sv ? "Paid from " + sv + " · " + rows.length + " bill" + (rows.length > 1 ? "s" : "") + " · " + money(tot) + " to save this month" : "Needs a saver · " + rows.length + " bill" + (rows.length > 1 ? "s" : "") }), el("td", { colSpan: R.pays.length + 1 })]));
       for (const r of rows) body.append(line(r));
     }
     section("spend", "Spending", R.groups.flatMap((g) => g.rows));
-    for (const g of R.groups) {
+    for (const g of secOpen("spend") ? R.groups : []) {
       const open = BUD.open[g.name] !== false, btn = el("button", { type: "button", textContent: (open ? "▾ " : "▸ ") + g.name }); btn.setAttribute("aria-expanded", String(open));
       btn.addEventListener("click", () => { BUD.open[g.name] = !open; renderBudget(); });
       const gl = r2(g.rows.reduce((s, r) => s + (r.last || 0), 0)), gt = el("td", { className: "n num" }); (bdRefs.grand.groups = bdRefs.grand.groups || []).push([gt, g.rows]);
