@@ -1703,7 +1703,7 @@
         sv.addEventListener("change", () => { if (sv.value) saveBillOpt(row.bill.id, { account: sv.value }); });
         const al = el("button", { type: "button", className: "btn ghost csv", textContent: "Allocate" }); al.disabled = !canWrite || !Object.keys(row.sug).length;
         al.setAttribute("aria-label", "Allocate " + row.label + " across Jai's pays this month");
-        al.addEventListener("click", () => { const a = allocOf(m); a[row.key] = {}; for (const [pk, v] of Object.entries(row.sug)) if (v > 0) a[row.key][pk] = v; renderBudget(); queueBudgetSave(m); $("bdMsg").textContent = "Allocated " + row.label + ". Saving…"; });
+        al.addEventListener("click", () => { setBillAlloc(m, row); renderBudget(); queueBudgetSave(m); $("bdMsg").textContent = "Allocated " + row.label + ". Saving…"; });
         const mode = row.bill.mode === "due" ? "due" : "weekly", modeBtns = [["weekly", "Weekly set-aside"], ["due", "Pay on due date"]].map(([v, l]) => { const bt = el("button", { type: "button", className: "segb", textContent: l }); bt.setAttribute("aria-pressed", String(mode === v)); bt.disabled = !canWrite; bt.addEventListener("click", () => { if (mode !== v) saveBillOpt(row.bill.id, { mode: v }); }); return bt; });
         const segEl = el("div", { className: "seg" }, modeBtns); segEl.setAttribute("role", "group"); segEl.setAttribute("aria-label", "How " + row.label + " is covered");
         sv.title = "Saver this bill is paid from"; sel.title = "Up category this bill maps to"; sel.options[0].textContent = "No category";
@@ -1717,6 +1717,10 @@
     { const sug = R.saverRows.reduce((s, r) => s + (r.sug.kaylee || 0), 0), kn = R.pays.find((p) => p.key === "kaylee").net; body.lastChild.firstChild.append(el("span", { className: "sub", textContent: sug ? "Suggested from Kaylee's pay: " + money(sug, 0) + (kn > 0 ? " of " + money(kn, 0) + " (" + Math.round(sug / kn * 100) + "%)" : "") : "Click a saver to set its target and save-by date; tick which pays it saves from" })); }
     for (const r of R.saverRows) body.append(line(r));
     section("bills", "Bills", R.billRows);
+    { const rb = el("button", { type: "button", className: "btn ghost csv", textContent: "Refresh bills", style: "margin-left:12px" }); rb.disabled = !canWrite || !R.billRows.length;
+      rb.title = "Re-work every bill's amounts from the latest bills, due dates and settings";
+      rb.addEventListener("click", () => { let n = 0; for (const r of R.billRows) { setBillAlloc(m, r); n++; } renderBudget(); queueBudgetSave(m); $("bdMsg").textContent = "Refreshed " + n + " bills from the latest bill details. Saving…"; });
+      body.lastChild.firstChild.append(rb); }
     if (!R.billRows.length) body.append(el("tr", {}, [el("td", { colSpan: R.pays.length + 3, className: "small muted", textContent: "No bills yet. Add them on the Bills tab." })]));
     // Bills grouped under the saver that pays them (bills still needing a saver first), each group in due-date order.
     const savers = balances.filter((b) => b.kind === "Saver").map((b) => b.account), byNext = (a, b) => (a.next || "9999").localeCompare(b.next || "9999") || a.label.localeCompare(b.label);
@@ -1770,6 +1774,11 @@
     const next = { ...cur, fromKaylee: who === "kaylee" ? on : src.kaylee, fromJai: who === "jai" ? on : src.jai, updatedAt: new Date().toISOString() };
     SAVERS[id] = next; renderBudget();
     try { await db.doc("saverGoals/" + id).set(next); $("bdMsg").textContent = "Saved."; } catch (e) { $("bdMsg").textContent = "That change wasn't saved. Try again in a moment."; }
+  }
+  // Puts a bill's worked-out amounts into Jai's pays (replacing what was there); anything typed into Kaylee's column is kept.
+  function setBillAlloc(m, row) {
+    const a = allocOf(m), keep = a[row.key] && a[row.key].kaylee != null ? { kaylee: a[row.key].kaylee } : {};
+    a[row.key] = keep; for (const [pk, v] of Object.entries(row.sug)) if (v > 0) a[row.key][pk] = v;
   }
   async function saveBillOpt(id, patch) {
     if (!db || !canWrite || !bills[id]) return;
