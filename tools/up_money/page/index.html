@@ -1468,7 +1468,9 @@
   }
   const allocOf = (m) => (BUD.months[m] = BUD.months[m] || {});
   // Kaylee's pay only goes to savers; bills and spending come out of Jai's weekly pays.
-  const payAllowed = (rowKey, payKey) => rowKey.startsWith("saver_") || payKey !== "kaylee";
+  // Savers take money from whichever pays are ticked on their line (Kaylee's only by default); bills and spending only ever come from Jai's pays.
+  const saverSrc = (account) => { const g = SAVERS[saverId(account)] || {}; return { kaylee: g.fromKaylee !== false, jai: !!g.fromJai }; };
+  const payAllowed = (rowKey, payKey) => { if (!rowKey.startsWith("saver_")) return payKey !== "kaylee"; const src = saverSrc(rowKey.slice(6)); return payKey === "kaylee" ? src.kaylee : src.jai; };
   const cellVal = (m, row, pay) => { if (!payAllowed(row, pay)) return null;  const r = allocOf(m)[row]; const v = r ? r[pay] : undefined; return v === undefined || v === null || v === "" ? null : Number(v); };
   // Net spending last month per Up subcategory, plus transfers to people and uncategorised spending.
   // Which budget line a transaction counts towards (null when it isn't spending).
@@ -1531,12 +1533,23 @@
   const SAVERS = {};
   const saverId = (a) => "s-" + a.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   const monthsBetween = (a, b) => { const [y1, m1] = a.split("-").map(Number), [y2, m2] = b.split("-").map(Number); return (y2 - y1) * 12 + (m2 - m1); };
+  // Pays a saver can draw on from the start of month m (and from today) up to its save-by date: Kaylee's 15ths and/or Jai's Wednesdays.
+  function saverPays(account, m, by) {
+    const src = saverSrc(account), from = m + "-01" > todayISO() ? m + "-01" : todayISO(), out = [];
+    if (src.kaylee) for (let mm = m; mm <= by.slice(0, 7); mm = addMonths(mm + "-01", 1).slice(0, 7)) { const d = mm + "-15"; if (d >= from && d <= by) out.push({ key: "kaylee", date: d }); }
+    if (src.jai) for (const d of allWeds(from, by)) out.push({ key: "jai_" + d, date: d });
+    return out.sort((a, b) => a.date.localeCompare(b.date));
+  }
   function saverPlan(account, m) {
     const g = SAVERS[saverId(account)]; if (!g || !(Number(g.target) > 0) || !g.by) return null;
-    const bal = Number((balances.find((b) => b.account === account) || {}).balance) || 0, key = "saver_" + account;
+    const bal = Number((balances.find((b) => b.account === account) || {}).balance) || 0, key = "saver_" + account, src = saverSrc(account);
     let before = 0; for (const [mm, alloc] of Object.entries(BUD.months)) if (mm >= NOW_MONTH && mm < m && alloc[key]) for (const v of Object.values(alloc[key])) before += Number(v) || 0;
-    const need = r2(Math.max(0, Number(g.target) - bal - before)), byM = g.by.slice(0, 7), months = Math.max(1, monthsBetween(m, byM) + (g.by.slice(8) >= "15" ? 1 : 0));
-    return { target: Number(g.target), by: g.by, bal, before: r2(before), need, months, perMonth: need > 0 ? Math.ceil(need / months) : 0, late: g.by.slice(0, 7) < m };
+    const need = r2(Math.max(0, Number(g.target) - bal - before)), pays = saverPays(account, m, g.by), late = !pays.length && need > 0;
+    // Whole dollars per pay, rounded up so the target is reached in time.
+    const perPay = need > 0 ? Math.ceil(need / Math.max(1, pays.length)) : 0, sug = {};
+    if (perPay) { const inMonth = pays.filter((x) => x.date.slice(0, 7) === m); if (inMonth.length) for (const x of inMonth) sug[x.key] = perPay; else if (late) { const first = src.jai ? "jai_" + (wednesdays(m)[0] || "") : "kaylee"; sug[first] = need; } }
+    const kay = pays.filter((x) => x.key === "kaylee").length, jai = pays.length - kay;
+    return { target: Number(g.target), by: g.by, bal, before: r2(before), need, pays: pays.length, kay, jai, perPay, sug, perMonth: r2(Object.values(sug).reduce((a, v) => a + v, 0)), late, src };
   }
   function openSaverGoal(account) {
     const m = bdMonth(), g = SAVERS[saverId(account)] || {}, kayNet = payFor("kaylee").net;
@@ -1553,9 +1566,11 @@
       if (!p) { calc.append("Enter a target and a save-by date to see how much to put aside each month."); return; }
       const line = (a, b) => el("div", { style: "display:flex;justify-content:space-between;gap:12px" }, [el("span", { textContent: a }), el("strong", { className: "num", textContent: b })]);
       calc.append(line("Target", money(p.target)), line("Balance today", money(p.bal)), p.before ? line("Already budgeted before " + monthName(m), money(p.before)) : "", line("Still to save", money(p.need)),
-        line("Pays left (the 15th, " + monthName(m) + " to " + dfmt(p.by) + ")", String(p.months)), line("Save each month from Kaylee's pay", money(p.perMonth)),
-        kayNet > 0 ? el("div", { className: "muted", style: "margin-top:4px", textContent: "That's " + Math.round(p.perMonth / kayNet * 100) + "% of Kaylee's take-home of " + money(kayNet) + "." }) : "",
-        p.late ? el("div", { className: "status-bad", style: "margin-top:4px", textContent: "The save-by date is before " + monthName(m) + ", so the whole amount is suggested this month." }) : "");
+        line("Pays left to " + dfmt(p.by) + [p.src.kaylee ? " · " + p.kay + " of Kaylee's" : "", p.src.jai ? " · " + p.jai + " of Jai's" : ""].join(""), String(p.pays)), line("Save each pay", money(p.perPay)),
+        line("This month (" + monthName(m) + ")", money(p.perMonth)),
+        p.src.kaylee && p.sug.kaylee && kayNet > 0 ? el("div", { className: "muted", style: "margin-top:4px", textContent: "That's " + Math.round(p.sug.kaylee / kayNet * 100) + "% of Kaylee's take-home of " + money(kayNet) + "." }) : "",
+        !p.src.kaylee && !p.src.jai ? el("div", { className: "status-bad", style: "margin-top:4px", textContent: "Tick at least one pay on the saver's line to save into it." }) : "",
+        p.late ? el("div", { className: "status-bad", style: "margin-top:4px", textContent: "No pay is left before the save-by date, so the whole amount is suggested on the next pay." }) : "");
     };
     tIn.addEventListener("input", preview); dIn.addEventListener("input", preview);
     const cancel = el("button", { className: "btn ghost", type: "button", textContent: "Cancel" });
@@ -1575,10 +1590,10 @@
       if (!(target > 0)) { err.textContent = "Enter a target above $0."; err.hidden = false; tIn.focus(); return; }
       if (!by) { err.textContent = "Pick a save-by date."; err.hidden = false; dIn.focus(); return; }
       ok.disabled = true;
-      try { await db.doc("saverGoals/" + saverId(account)).set({ account, target: r2(target), by, updatedAt: new Date().toISOString() }); SAVERS[saverId(account)] = { account, target: r2(target), by }; close(); renderBudget(); }
+      try { const keepSrc = { fromKaylee: saverSrc(account).kaylee, fromJai: saverSrc(account).jai }; await db.doc("saverGoals/" + saverId(account)).set({ account, target: r2(target), by, ...keepSrc, updatedAt: new Date().toISOString() }); SAVERS[saverId(account)] = { account, target: r2(target), by, ...keepSrc }; close(); renderBudget(); }
       catch (e) { ok.disabled = false; err.textContent = "The target wasn't saved. Try again in a moment."; err.hidden = false; }
     });
-    del.addEventListener("click", async () => { try { await db.doc("saverGoals/" + saverId(account)).delete(); delete SAVERS[saverId(account)]; close(); renderBudget(); } catch (e) { err.textContent = "The target wasn't removed. Try again in a moment."; err.hidden = false; } });
+    del.addEventListener("click", async () => { try { const src = saverSrc(account); await db.doc("saverGoals/" + saverId(account)).set({ account, target: null, by: null, fromKaylee: src.kaylee, fromJai: src.jai, updatedAt: new Date().toISOString() }); SAVERS[saverId(account)] = { account, fromKaylee: src.kaylee, fromJai: src.jai }; close(); renderBudget(); } catch (e) { err.textContent = "The target wasn't removed. Try again in a moment."; err.hidden = false; } });
     cancel.addEventListener("click", close);
     back.addEventListener("click", (e) => { if (e.target === back) close(); });
     box.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
@@ -1597,7 +1612,7 @@
     groups.push({ name: "Other", rows: [["other_transfers", "Transfers to people"], ["other_uncat", "Uncategorised"]].map(([k, l]) => ({ key: k, kind: "cat", label: l, sub: "", last: last[k] || 0, sug: spread(Math.max(0, Math.round(last[k] || 0)), jaiPays) })) });
     const saverRows = balances.filter((b) => b.kind === "Saver").map((b) => { const g = saverPlan(b.account, m), billsHere = billRows.filter((r) => r.saver === b.account);
       return { key: "saver_" + b.account, kind: "saver", label: b.account, account: b.account, plan: g, billKeys: billsHere.map((r) => r.key),
-      sub: "Balance " + money(Number(b.balance) || 0) + (g ? " · target " + money(g.target, 0) + " by " + dfmt(g.by) + " · " + (g.need > 0 ? money(g.perMonth, 0) + "/month" : "reached") : billsHere.length ? "" : " · no target yet") + (billsHere.length ? " · pays " + billsHere.length + " bill" + (billsHere.length > 1 ? "s" : "") + " (" + billsHere.map((r) => r.label).join(", ") + "), " + money(r2(billsHere.reduce((s, r) => s + Object.values(r.sug).reduce((a, v) => a + v, 0), 0))) + " going in for them this month from the Bills lines" : ""), last: null, sug: g && g.perMonth > 0 ? { kaylee: g.perMonth } : {} }; });
+      sub: "Balance " + money(Number(b.balance) || 0) + (g ? " · target " + money(g.target, 0) + " by " + dfmt(g.by) + " · " + (g.need > 0 ? money(g.perPay, 0) + " a pay over " + g.pays + " pays" : "reached") : billsHere.length ? "" : " · no target yet") + (billsHere.length ? " · pays " + billsHere.length + " bill" + (billsHere.length > 1 ? "s" : "") + " (" + billsHere.map((r) => r.label).join(", ") + "), " + money(r2(billsHere.reduce((s, r) => s + Object.values(r.sug).reduce((a, v) => a + v, 0), 0))) + " going in for them this month from the Bills lines" : ""), last: null, sug: g ? g.sug : {} }; });
     return { pays, billRows, groups, saverRows, last };
   }
   const catOptions = () => [el("option", { value: "", textContent: "No category" }), ...cats.map((p) => { const g = el("optgroup", { label: p.name }); g.append(...p.children.map((c) => el("option", { value: c.id, textContent: c.name }))); return g; })];
@@ -1611,7 +1626,7 @@
       ...R.pays.map((p) => { const th = el("th", { className: "n pay" }); th.append(p.label, el("span", { className: "sub", textContent: p.sub + " · " + money(p.net, 0) })); return th; }), el("th", { className: "n", textContent: "Month total" })]);
     const body = el("tbody");
     const cellInput = (row) => R.pays.map((p) => {
-      if (!payAllowed(row.key, p.key)) return el("td", { className: "n small muted", textContent: "—", title: "Kaylee's pay goes to savers only" });
+      if (!payAllowed(row.key, p.key)) return el("td", { className: "n small muted", textContent: "—", title: row.kind === "saver" ? "Tick this pay on the saver's line to save from it" : "Bills and spending come from Jai's pays" });
       const v = cellVal(m, row.key, p.key), sug = row.sug[p.key];
       const inp = el("input", { className: "bc", type: "number", min: "0", step: "0.01", inputMode: "decimal", value: v === null ? "" : v, placeholder: sug ? String(Math.round(sug * 100) / 100) : "" });
       inp.setAttribute("aria-label", row.label + ", " + p.label + " " + p.sub);
@@ -1621,8 +1636,11 @@
     });
     const line = (row, ind) => { const tot = el("td", { className: "n num" }); bdRefs.rowTot[row.key] = tot; all.push(row);
       let name = el("div", { textContent: row.label });
-      if (row.kind === "saver") { name = el("button", { type: "button", className: "crumb", textContent: row.label, style: "text-align:left" }); name.setAttribute("aria-label", row.label + ": target and save-by date"); name.addEventListener("click", () => openSaverGoal(row.account)); }
-      const first = el("td", { className: "stick" + (ind ? " ind" : "") }, [name, row.sub ? el("span", { className: "sub", textContent: row.sub }) : ""]);
+      let srcBox = "";
+      if (row.kind === "saver") { name = el("button", { type: "button", className: "crumb", textContent: row.label, style: "text-align:left" }); name.setAttribute("aria-label", row.label + ": target and save-by date"); name.addEventListener("click", () => openSaverGoal(row.account));
+        const src = saverSrc(row.account), box = (who, label) => { const c = el("input", { type: "checkbox", checked: src[who] }); c.disabled = !canWrite; c.addEventListener("change", () => saveSaverSrc(row.account, who, c.checked)); return el("label", {}, [c, " " + label]); };
+        srcBox = el("div", { className: "billopts" }, [el("span", { textContent: "Save from:" }), box("kaylee", "Kaylee's pay"), box("jai", "Jai's pays")]); }
+      const first = el("td", { className: "stick" + (ind ? " ind" : "") }, [name, row.sub ? el("span", { className: "sub", textContent: row.sub }) : "", srcBox]);
       if (row.kind === "bill") {
         const sel = el("select", {}, catOptions()); sel.value = row.bill.category || ""; sel.setAttribute("aria-label", "Category for " + row.label); sel.disabled = !canWrite;
         sel.addEventListener("change", () => saveBillOpt(row.bill.id, { category: sel.value || null }));
@@ -1638,7 +1656,7 @@
     const section = (key, title, rows) => { const cells = R.pays.map((p) => { const td = el("td", { className: "n num" }); (bdRefs.secTot[key] = bdRefs.secTot[key] || {})[p.key] = td; return td; }); const tot = el("td", { className: "n num" }); bdRefs.secTot[key]._ = tot; const lastTot = rows.reduce((s, r) => s + (r.last || 0), 0);
       body.append(el("tr", { className: "sec" }, [el("td", { className: "stick", textContent: title }), el("td", { className: "n num", textContent: key === "spend" ? money(r2(lastTot)) : "" }), ...cells, tot])); };
     section("save", "Savers", R.saverRows);
-    { const sug = R.saverRows.reduce((s, r) => s + (r.sug.kaylee || 0), 0), kn = R.pays.find((p) => p.key === "kaylee").net; body.lastChild.firstChild.append(el("span", { className: "sub", textContent: sug ? "Suggested from Kaylee's pay: " + money(sug, 0) + (kn > 0 ? " of " + money(kn, 0) + " (" + Math.round(sug / kn * 100) + "%)" : "") : "Click a saver to set its target and save-by date" })); }
+    { const sug = R.saverRows.reduce((s, r) => s + (r.sug.kaylee || 0), 0), kn = R.pays.find((p) => p.key === "kaylee").net; body.lastChild.firstChild.append(el("span", { className: "sub", textContent: sug ? "Suggested from Kaylee's pay: " + money(sug, 0) + (kn > 0 ? " of " + money(kn, 0) + " (" + Math.round(sug / kn * 100) + "%)" : "") : "Click a saver to set its target and save-by date; tick which pays it saves from" })); }
     for (const r of R.saverRows) body.append(line(r));
     section("bills", "Bills", R.billRows);
     if (!R.billRows.length) body.append(el("tr", {}, [el("td", { colSpan: R.pays.length + 3, className: "small muted", textContent: "No bills yet. Add them on the Bills tab." })]));
@@ -1680,6 +1698,13 @@
       try { await db.doc("budget/" + m).set({ alloc: allocOf(m), updatedAt: new Date().toISOString() }); if (BUD.gen === gen) { BUD.dirty[m] = false; $("bdMsg").textContent = "Saved."; } }
       catch (e) { $("bdMsg").textContent = e && e.code === "quota_exceeded" ? "The budget is too big to save. Clear an old month, then try again." : "That change wasn't saved. Try again in a moment."; }
     }, 700);
+  }
+  async function saveSaverSrc(account, who, on) {
+    if (!db || !canWrite) return;
+    const id = saverId(account), cur = { account, ...(SAVERS[id] || {}) }, src = saverSrc(account);
+    const next = { ...cur, fromKaylee: who === "kaylee" ? on : src.kaylee, fromJai: who === "jai" ? on : src.jai, updatedAt: new Date().toISOString() };
+    SAVERS[id] = next; renderBudget();
+    try { await db.doc("saverGoals/" + id).set(next); $("bdMsg").textContent = "Saved."; } catch (e) { $("bdMsg").textContent = "That change wasn't saved. Try again in a moment."; }
   }
   async function saveBillOpt(id, patch) {
     if (!db || !canWrite || !bills[id]) return;
