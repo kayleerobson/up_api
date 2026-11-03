@@ -2262,6 +2262,8 @@
     setDrawer(title, "Actuals", dfmt(c.pay.date) + " to " + dfmt(c.end) + " · " + items.length + " transactions", [{ label: "Date" }, { label: "Where / who" }, { label: "By" }, { label: "Amount", n: 1 }], rows,
       () => ["actuals-" + title.toLowerCase().replace(/[^a-z0-9]+/g, "-"), ["Date", "Account", "Description", "Reference", "Amount"], items.map((t) => [t.date, t.account, t.description, t.reference, (sign * t.amount).toFixed(2)])], false);
   }
+  // +$12.30 in green or −$12.30 in red, no words.
+  const signed = (v) => (v > 0 ? "+" : "") + money(v);
   function renderActual() {
     const c = pcContext(); if (!c) return; const f = fcGet(c), body = $("acBody"); body.replaceChildren();
     const inPer = (t) => t.date >= c.pay.date && t.date <= c.end, today = todayISO();
@@ -2271,7 +2273,7 @@
     let sec = null, outTot = 0, fcTot = 0;
     const inBtn = el("button", { type: "button", className: "crumb num", textContent: money(inTot) }); inBtn.addEventListener("click", () => openActual(c, "Money in", moneyIn, 1));
     body.append(el("tr", { className: "sec" }, [el("td", { colSpan: 6, textContent: "Income", style: "font-weight:600;background:var(--surface)" })]),
-      el("tr", {}, [el("td", { textContent: c.pay.label + "'s pay and other money in" }), el("td", { className: "n num muted", textContent: money(c.pay.net) }), el("td", { className: "n num", textContent: money(f.income) }), el("td", { className: "n" }, [inBtn]), (() => { const d = r2(inTot - f.income); return el("td", { className: "n num " + (d >= 0 ? "status-good" : "status-bad"), textContent: (d >= 0 ? "+" : "") + money(d) + (d >= 0 ? " more" : " short") }); })(), el("td")]));
+      el("tr", {}, [el("td", { textContent: c.pay.label + "'s pay and other money in" }), el("td", { className: "n num muted", textContent: money(c.pay.net) }), el("td", { className: "n num", textContent: money(f.income) }), el("td", { className: "n" }, [inBtn]), (() => { const d = r2(inTot - f.income); return el("td", { className: "n num " + (d >= 0 ? "status-good" : "status-bad"), textContent: signed(d) }); })(), el("td")]));
     for (const l of c.lines) {
       const fv = fcVal(c, f, l), a = actualFor(c, l); if (!fv && !a.v && !l.budget) continue;
       if (l.sec !== sec) { sec = l.sec; body.append(el("tr", { className: "sec" }, [el("td", { colSpan: 6, textContent: sec, style: "font-weight:600;background:var(--surface)" })])); }
@@ -2279,7 +2281,7 @@
       const left = r2(fv - a.v), pct = fv ? Math.min(100, Math.round(a.v / fv * 100)) : 100;
       const bar = el("div", { style: "height:6px;border-radius:3px;background:var(--hairline);overflow:hidden" }, [el("div", { style: `height:100%;width:${pct}%;background:${a.v > fv + 0.005 ? "var(--negative)" : "var(--cobalt)"}` })]);
       const act = a.v ? el("button", { type: "button", className: "crumb num", textContent: money(a.v) }) : el("span", { className: "muted", textContent: "$0.00" }); if (a.v) act.addEventListener("click", () => openActual(c, l.label, a.items, l.sec === "Savers" ? 1 : -1));
-      body.append(el("tr", {}, [el("td", { textContent: l.label }), el("td", { className: "n num muted", textContent: money(l.budget) }), el("td", { className: "n num", textContent: money(fv) }), el("td", { className: "n" }, [act]), el("td", { className: "n num" + (left < 0 ? " status-bad" : ""), textContent: money(left) }), el("td", {}, [bar])]));
+      body.append(el("tr", {}, [el("td", { textContent: l.label }), el("td", { className: "n num muted", textContent: money(l.budget) }), el("td", { className: "n num", textContent: money(fv) }), el("td", { className: "n" }, [act]), el("td", { className: "n num " + (left < 0 ? "status-bad" : left > 0 ? "status-good" : ""), textContent: signed(left) }), el("td", {}, [bar])]));
     }
     outTot = r2(outTot); fcTot = r2(fcTot);
     $("acOut").textContent = money(outTot, 0); $("acOutSub").textContent = "Budget " + money(c.budgetTotal, 0) + " · forecast " + money(fcTot, 0);
