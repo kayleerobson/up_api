@@ -1478,6 +1478,63 @@
   const billWeekly = (b) => r2((Number(b.amount) || 0) * (FREQ[b.freq] || FREQ.monthly).perYear / 52);
   // Spread an amount evenly over the pays, whole dollars, remainder on the last pay.
   function spread(total, pays) { if (!pays.length || !(total > 0)) return {}; const each = Math.floor(total / pays.length), o = {}; pays.forEach((p, i) => { o[p.key] = i === pays.length - 1 ? r2(total - each * (pays.length - 1)) : each; }); return o; }
+  // Saver targets live in saverGoals/<id> as {account, target, by}. The monthly suggestion comes out of Kaylee's pay:
+  // what's still needed (target - today's balance - anything already budgeted to it in earlier months from this month on) / months left to the save-by month.
+  const SAVERS = {};
+  const saverId = (a) => "s-" + a.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const monthsBetween = (a, b) => { const [y1, m1] = a.split("-").map(Number), [y2, m2] = b.split("-").map(Number); return (y2 - y1) * 12 + (m2 - m1); };
+  function saverPlan(account, m) {
+    const g = SAVERS[saverId(account)]; if (!g || !(Number(g.target) > 0) || !g.by) return null;
+    const bal = Number((balances.find((b) => b.account === account) || {}).balance) || 0, key = "saver_" + account;
+    let before = 0; for (const [mm, alloc] of Object.entries(BUD.months)) if (mm >= NOW_MONTH && mm < m && alloc[key]) for (const v of Object.values(alloc[key])) before += Number(v) || 0;
+    const need = r2(Math.max(0, Number(g.target) - bal - before)), months = Math.max(1, monthsBetween(m, g.by.slice(0, 7)) + 1);
+    return { target: Number(g.target), by: g.by, bal, before: r2(before), need, months, perMonth: need > 0 ? Math.ceil(need / months) : 0, late: g.by.slice(0, 7) < m };
+  }
+  function openSaverGoal(account) {
+    const m = bdMonth(), g = SAVERS[saverId(account)] || {}, kayNet = payFor("kaylee").net;
+    const back = el("div", { className: "modal-back" });
+    const tIn = el("input", { type: "number", id: "sgTarget", min: "0", step: "1", inputMode: "decimal", value: g.target ?? "" });
+    const dIn = el("input", { type: "date", id: "sgBy", value: g.by || "" });
+    for (const i of [tIn, dIn]) Object.assign(i.style, { font: "inherit", fontSize: "15px", padding: "6px 10px", border: "1px solid var(--hairline)", borderRadius: "var(--r-sm)", width: "100%", boxSizing: "border-box", color: "var(--ink)", background: "var(--raised)" });
+    const calc = el("div", { className: "small", style: "background:var(--cobalt-tint);border-radius:var(--r-sm);padding:10px 12px;line-height:20px" });
+    const err = el("p", { className: "small status-bad" }); err.hidden = true;
+    const preview = () => {
+      SAVERS.__preview = { target: Number(tIn.value), by: dIn.value }; const real = SAVERS[saverId(account)]; SAVERS[saverId(account)] = SAVERS.__preview;
+      const p = saverPlan(account, m); if (real) SAVERS[saverId(account)] = real; else delete SAVERS[saverId(account)]; delete SAVERS.__preview;
+      calc.replaceChildren();
+      if (!p) { calc.append("Enter a target and a save-by date to see how much to put aside each month."); return; }
+      const line = (a, b) => el("div", { style: "display:flex;justify-content:space-between;gap:12px" }, [el("span", { textContent: a }), el("strong", { className: "num", textContent: b })]);
+      calc.append(line("Target", money(p.target)), line("Balance today", money(p.bal)), p.before ? line("Already budgeted before " + monthName(m), money(p.before)) : "", line("Still to save", money(p.need)),
+        line("Months left (" + monthName(m) + " to " + monthName(p.by.slice(0, 7)) + ")", String(p.months)), line("Save each month from Kaylee's pay", money(p.perMonth)),
+        kayNet > 0 ? el("div", { className: "muted", style: "margin-top:4px", textContent: "That's " + Math.round(p.perMonth / kayNet * 100) + "% of Kaylee's take-home of " + money(kayNet) + "." }) : "",
+        p.late ? el("div", { className: "status-bad", style: "margin-top:4px", textContent: "The save-by date is before " + monthName(m) + ", so the whole amount is suggested this month." }) : "");
+    };
+    tIn.addEventListener("input", preview); dIn.addEventListener("input", preview);
+    const cancel = el("button", { className: "btn ghost", type: "button", textContent: "Cancel" });
+    const del = el("button", { className: "btn ghost", type: "button", textContent: "Remove target" }); del.hidden = !g.target;
+    const ok = el("button", { className: "btn", type: "button", textContent: "Save target" });
+    const box = el("div", { className: "modal", role: "dialog" }, [
+      el("h3", { textContent: account + " saver", id: "sgTitle" }),
+      el("label", { className: "label", htmlFor: "sgTarget", textContent: "Target $" }), tIn,
+      el("label", { className: "label", htmlFor: "sgBy", textContent: "Save by" }), dIn, calc, err,
+      el("div", { className: "row" }, [del, cancel, ok])]);
+    box.setAttribute("aria-modal", "true"); box.setAttribute("aria-labelledby", "sgTitle");
+    back.append(box); document.body.append(back); tIn.focus(); preview();
+    const close = () => back.remove();
+    ok.disabled = del.disabled = !canWrite; if (!canWrite) { err.textContent = "Only editors can set targets."; err.hidden = false; }
+    ok.addEventListener("click", async () => {
+      const target = Number(tIn.value), by = dIn.value;
+      if (!(target > 0)) { err.textContent = "Enter a target above $0."; err.hidden = false; tIn.focus(); return; }
+      if (!by) { err.textContent = "Pick a save-by date."; err.hidden = false; dIn.focus(); return; }
+      ok.disabled = true;
+      try { await db.doc("saverGoals/" + saverId(account)).set({ account, target: r2(target), by, updatedAt: new Date().toISOString() }); SAVERS[saverId(account)] = { account, target: r2(target), by }; close(); renderBudget(); }
+      catch (e) { ok.disabled = false; err.textContent = "The target wasn't saved. Try again in a moment."; err.hidden = false; }
+    });
+    del.addEventListener("click", async () => { try { await db.doc("saverGoals/" + saverId(account)).delete(); delete SAVERS[saverId(account)]; close(); renderBudget(); } catch (e) { err.textContent = "The target wasn't removed. Try again in a moment."; err.hidden = false; } });
+    cancel.addEventListener("click", close);
+    back.addEventListener("click", (e) => { if (e.target === back) close(); });
+    box.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+  }
   function budgetRows(m) {
     const pays = budgetPays(m), last = lastMonthSpend(m), jaiPays = pays.filter((p) => p.jai), kay = pays[0];
     const billRows = Object.entries(bills).map(([id, b]) => ({ id, ...b })).filter((b) => isActive(b) || billDueIn(b, m).length).sort((a, b) => a.name.localeCompare(b.name)).map((b) => {
@@ -1489,7 +1546,8 @@
     const mapped = {}; for (const r of billRows) if (r.bill.category) mapped[r.bill.category] = r2((mapped[r.bill.category] || 0) + billMonthAmt(r.bill, m));
     const groups = cats.map((p) => ({ name: p.name, rows: p.children.map((c) => { const lm = last["cat_" + c.id] || 0, sugAmt = Math.max(0, Math.round(lm - (mapped[c.id] || 0))); return { key: "cat_" + c.id, kind: "cat", label: c.name, sub: mapped[c.id] ? "Includes bills mapped here" : "", last: lm, sug: spread(sugAmt, jaiPays) }; }) }));
     groups.push({ name: "Other", rows: [["other_transfers", "Transfers to people"], ["other_uncat", "Uncategorised"]].map(([k, l]) => ({ key: k, kind: "cat", label: l, sub: "", last: last[k] || 0, sug: spread(Math.max(0, Math.round(last[k] || 0)), jaiPays) })) });
-    const saverRows = balances.filter((b) => b.kind === "Saver").map((b) => ({ key: "saver_" + b.account, kind: "saver", label: b.account, sub: "Balance " + money(Number(b.balance) || 0), last: null, sug: {} }));
+    const saverRows = balances.filter((b) => b.kind === "Saver").map((b) => { const g = saverPlan(b.account, m); return { key: "saver_" + b.account, kind: "saver", label: b.account, account: b.account, plan: g,
+      sub: "Balance " + money(Number(b.balance) || 0) + (g ? " · target " + money(g.target, 0) + " by " + dfmt(g.by) + " · " + (g.need > 0 ? money(g.perMonth, 0) + "/month" : "reached") : " · no target yet"), last: null, sug: g && g.perMonth > 0 ? { kaylee: g.perMonth } : {} }; });
     return { pays, billRows, groups, saverRows, last };
   }
   const catOptions = () => [el("option", { value: "", textContent: "No category" }), ...cats.map((p) => { const g = el("optgroup", { label: p.name }); g.append(...p.children.map((c) => el("option", { value: c.id, textContent: c.name }))); return g; })];
@@ -1512,7 +1570,9 @@
       return el("td", { className: "n" }, [inp]);
     });
     const line = (row, ind) => { const tot = el("td", { className: "n num" }); bdRefs.rowTot[row.key] = tot; all.push(row);
-      const first = el("td", { className: "stick" + (ind ? " ind" : "") }, [el("div", { textContent: row.label }), row.sub ? el("span", { className: "sub", textContent: row.sub }) : ""]);
+      let name = el("div", { textContent: row.label });
+      if (row.kind === "saver") { name = el("button", { type: "button", className: "crumb", textContent: row.label, style: "text-align:left" }); name.setAttribute("aria-label", row.label + ": target and save-by date"); name.addEventListener("click", () => openSaverGoal(row.account)); }
+      const first = el("td", { className: "stick" + (ind ? " ind" : "") }, [name, row.sub ? el("span", { className: "sub", textContent: row.sub }) : ""]);
       if (row.kind === "bill") {
         const sel = el("select", {}, catOptions()); sel.value = row.bill.category || ""; sel.setAttribute("aria-label", "Category for " + row.label); sel.disabled = !canWrite;
         sel.addEventListener("change", () => saveBillOpt(row.bill.id, { category: sel.value || null }));
@@ -1523,6 +1583,7 @@
     const section = (key, title, rows) => { const cells = R.pays.map((p) => { const td = el("td", { className: "n num" }); (bdRefs.secTot[key] = bdRefs.secTot[key] || {})[p.key] = td; return td; }); const tot = el("td", { className: "n num" }); bdRefs.secTot[key]._ = tot; const lastTot = rows.reduce((s, r) => s + (r.last || 0), 0);
       body.append(el("tr", { className: "sec" }, [el("td", { className: "stick", textContent: title }), el("td", { className: "n num", textContent: key === "spend" ? money(r2(lastTot)) : "" }), ...cells, tot])); };
     section("save", "Savers", R.saverRows);
+    { const sug = R.saverRows.reduce((s, r) => s + (r.sug.kaylee || 0), 0), kn = R.pays[0].net; body.lastChild.firstChild.append(el("span", { className: "sub", textContent: sug ? "Suggested from Kaylee's pay: " + money(sug, 0) + (kn > 0 ? " of " + money(kn, 0) + " (" + Math.round(sug / kn * 100) + "%)" : "") : "Click a saver to set its target and save-by date" })); }
     for (const r of R.saverRows) body.append(line(r));
     section("bills", "Bills", R.billRows);
     if (!R.billRows.length) body.append(el("tr", {}, [el("td", { colSpan: R.pays.length + 3, className: "small muted", textContent: "No bills yet. Add them on the Bills tab." })]));
@@ -1662,6 +1723,7 @@
     if (db) db.collection("tagChanges").onSnapshot((snap) => { tagChanges = {}; for (const d of snap.docs) tagChanges[d.id] = d.data(); fillTagControls(); renderEverything(); }, () => {});
     if (db) db.collection("income").onSnapshot((snap) => { for (const d of snap.docs) if (INC[d.id] && !INC[d.id].dirty) { INC[d.id].items = (d.data().items || []).map((x) => ({ ...x })); INC[d.id].weeks = {}; for (const [w, L] of Object.entries(d.data().weeks || {})) INC[d.id].weeks[w] = copyItems(L); if (typeof d.data().help === "boolean") INC[d.id].help = d.data().help; INC[d.id].helpFixed = d.data().helpFixed ?? ""; INC[d.id].calc = true; } renderIncome(); renderBudget(); }, () => {});
     if (db) db.collection("bills").onSnapshot((snap) => { bills = {}; for (const d of snap.docs) bills[d.id] = d.data(); renderBills(); renderBudget(); }, () => {});
+    if (db) db.collection("saverGoals").onSnapshot((snap) => { for (const k of Object.keys(SAVERS)) delete SAVERS[k]; for (const d of snap.docs) SAVERS[d.id] = d.data(); if (!$("bdTable").contains(document.activeElement)) renderBudget(); }, () => {});
     if (db) db.collection("budget").onSnapshot((snap) => { for (const d of snap.docs) if (!BUD.dirty[d.id]) BUD.months[d.id] = d.data().alloc || {}; if (!$("bdTable").contains(document.activeElement)) renderBudget(); }, () => {});
     if (db) db.collection("tags").onSnapshot((snap) => { newTags = {}; for (const d of snap.docs) newTags[d.id] = d.data(); fillTagControls(); renderEverything(); }, () => {});
     renderEverything();
