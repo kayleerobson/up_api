@@ -482,7 +482,7 @@
     </div>
     <div class="card">
       <div class="monthbar"><div class="field"><label class="label" for="bdMonth">Month</label><input id="bdMonth" type="month"></div>
-        <p class="small muted">Each column is one pay, using take-home from the Income tab. Kaylee's monthly pay goes to savers only; bills and spending come out of Jai's Wednesday pays. Each bill is paid from a saver: its amount is put into that saver week by week from Jai's pays, worked out from the due date, so the money is there when the bill comes out. Fill in savers first, then bills, then spending; the right-hand column rolls the month up. Faint numbers are suggestions; Fill suggestions copies them into empty boxes.</p></div>
+        <p class="small muted">Each column is one pay, using take-home from the Income tab. Suggestions put Kaylee's monthly pay towards savers and bills and spending on Jai's Wednesday pays, but you can type an amount into any pay. Each bill is paid from a saver: its amount is put into that saver week by week from Jai's pays, worked out from the due date, so the money is there when the bill comes out. Fill in savers first, then bills, then spending; the right-hand column rolls the month up. Faint numbers are suggestions; Fill suggestions copies them into empty boxes.</p></div>
       <div class="incbar"><button class="btn" type="button" id="bdFill">Fill suggestions</button><button class="btn ghost" type="button" id="bdClear">Clear this month</button><span class="small muted" id="bdMsg"></span></div>
     </div>
     <div class="card">
@@ -1517,9 +1517,10 @@
   }
   const allocOf = (m) => (BUD.months[m] = BUD.months[m] || {});
   // Kaylee's pay only goes to savers; bills and spending come out of Jai's weekly pays.
-  // Savers take money from whichever pays are ticked on their line (Kaylee's only by default); bills and spending only ever come from Jai's pays.
+  // Savers take money from whichever pays are ticked on their line (Kaylee's only by default). Bills and spending can use any pay;
+  // their suggestions only ever go on Jai's pays, so Kaylee's column stays empty unless you type into it.
   const saverSrc = (account) => { const g = SAVERS[saverId(account)] || {}; return { kaylee: g.fromKaylee !== false, jai: !!g.fromJai }; };
-  const payAllowed = (rowKey, payKey) => { if (!rowKey.startsWith("saver_")) return payKey !== "kaylee"; const src = saverSrc(rowKey.slice(6)); return payKey === "kaylee" ? src.kaylee : src.jai; };
+  const payAllowed = (rowKey, payKey) => { if (!rowKey.startsWith("saver_")) return true; const src = saverSrc(rowKey.slice(6)); return payKey === "kaylee" ? src.kaylee : src.jai; };
   const cellVal = (m, row, pay) => { if (!payAllowed(row, pay)) return null;  const r = allocOf(m)[row]; const v = r ? r[pay] : undefined; return v === undefined || v === null || v === "" ? null : Number(v); };
   // Net spending last month per Up subcategory, plus transfers to people and uncategorised spending.
   // Which budget line a transaction counts towards (null when it isn't spending).
