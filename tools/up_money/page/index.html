@@ -208,6 +208,12 @@
   @media (max-width: 640px) { .bud .stick { min-width: 11rem; } }
   .stat.neg { color: var(--negative); }
   .bud tr.sec .stick { background: var(--surface); } .bud tr.foot .stick { background: var(--cobalt-tint); }
+  .xm input, .xm select { width: 100%; min-width: 0; box-sizing: border-box; height: 30px; font: inherit; font-size: 13px; color: var(--ink); background: var(--raised); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 4px 6px; }
+  .xm input[type="number"] { text-align: right; }
+  .xm td { vertical-align: middle; padding: 4px 6px; }
+  .xm .w-type { width: 8.5rem; } .xm .w-who { width: 9rem; } .xm .w-amt { width: 7rem; } .xm .w-st { width: 7.5rem; } .xm .w-x { width: 4rem; }
+  .xm { min-width: 58rem; }
+  .xm tr.done td { background: var(--surface); }
   .check { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: var(--ink); cursor: pointer; margin-top: 12px; }
   .check input { width: 16px; height: 16px; margin: 0; accent-color: var(--cobalt); }
   .sumtable td, .sumtable th { padding: 6px 8px; }
@@ -244,6 +250,7 @@
       <button class="navitem sub" id="tab-bills" data-view="bills" type="button">Bills</button>
       <button class="navitem sub" id="tab-income" data-view="income" type="button">Income</button>
       <button class="navitem sub" id="tab-budget" data-view="budget" type="button">Budget</button>
+      <button class="navitem sub" id="tab-xmas" data-view="xmas" type="button">Christmas</button>
       <p class="navsoon">More coming soon</p>
     </div>
   </nav>
@@ -466,6 +473,24 @@
     </div>
     <div class="card">
       <div class="tablebox" style="max-height:none"><table class="bud" id="bdTable"></table></div>
+    </div>
+  </section>
+
+  <section id="view-xmas" aria-labelledby="pageTitle" class="stack" hidden>
+    <div class="tiles" aria-label="Christmas totals">
+      <div class="tile"><p class="label">Planned</p><span class="stat" id="xPlan">—</span><p class="small muted" id="xPlanSub">—</p></div>
+      <div class="tile"><p class="label">Spent so far</p><span class="stat" id="xSpent">—</span><p class="small muted" id="xSpentSub">—</p></div>
+      <div class="tile"><p class="label">Christmas saver</p><span class="stat" id="xSaver">—</span><p class="small muted">Balance today</p></div>
+      <div class="tile"><p class="label">Still to save</p><span class="stat" id="xNeed">—</span><p class="small muted" id="xNeedSub">—</p></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div><h2>Christmas <span id="xYearLbl"></span></h2><p class="note">List every gift and Christmas cost with what you plan to spend. Tick things off as you buy them and enter what they actually cost. Still to save is the budget for everything not bought yet, minus what's in the Christmas saver, spread over the Wednesdays left before Christmas.</p></div><button class="btn ghost csv" type="button" data-csv="xmas">Download CSV</button></div>
+      <div class="incbar" style="margin-top:0"><button class="btn" type="button" id="xAdd">Add item</button><button class="btn ghost" type="button" id="xGoal">Set as Christmas saver target</button><span class="small muted" id="xMsg"></span></div>
+      <div class="tablebox" style="margin-top:12px;max-height:none"><table class="xm"><thead><tr><th class="w-type">Type</th><th class="w-who">For</th><th>Item</th><th class="w-amt n">Budget $</th><th class="w-amt n">Spent $</th><th class="w-st">Status</th><th class="w-x"></th></tr></thead><tbody id="xBody"></tbody></table></div>
+    </div>
+    <div class="grid2">
+      <div class="card"><div class="card-head"><div><h3>By type</h3></div></div><div class="tablebox"><table><thead><tr><th>Type</th><th class="n">Items</th><th class="n">Budget</th><th class="n">Spent</th><th class="n">Left</th></tr></thead><tbody id="xByType"></tbody></table></div></div>
+      <div class="card"><div class="card-head"><div><h3>Gifts by person</h3></div></div><div class="tablebox"><table><thead><tr><th>For</th><th class="n">Gifts</th><th class="n">Budget</th><th class="n">Spent</th><th class="n">Bought</th></tr></thead><tbody id="xByWho"></tbody></table></div></div>
     </div>
   </section>
 
@@ -1642,8 +1667,71 @@
     b.dataset.confirm = ""; b.textContent = "Clear this month"; BUD.months[bdMonth()] = {}; renderBudget(); queueBudgetSave(bdMonth());
   });
 
+  // ---------- Christmas ----------
+  // Items live in christmas/<id> as {year, type, who, item, budget, actual, status}. Linked to the "Christmas" saver if there is one.
+  const XM = { items: {}, timers: {} };
+  const XTYPES = ["Gift", "Food & drink", "Decorations", "Wrapping & cards", "Travel", "Events", "Other"];
+  const XSTATUS = ["Idea", "Bought", "Wrapped", "Done"];
+  const xYear = () => { const d = new Date(); return d.getMonth() === 0 && d.getDate() < 15 ? d.getFullYear() - 1 : d.getFullYear(); };
+  const xList = () => Object.entries(XM.items).filter(([, x]) => Number(x.year) === xYear()).map(([id, x]) => ({ id, ...x })).sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
+  const xSaver = () => balances.find((b) => b.kind === "Saver" && /christmas/i.test(b.account));
+  function xWedsLeft() { const end = xYear() + "-12-24", out = []; const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + ((3 - d.getDay() + 7) % 7)); while (iso(d) <= end) { out.push(iso(d)); d.setDate(d.getDate() + 7); } return out; }
+  function xSave(id) {
+    if (!db || !canWrite) return;
+    clearTimeout(XM.timers[id]); $("xMsg").textContent = "Saving…"; (XM.pending = XM.pending || {})[id] = true;
+    XM.timers[id] = setTimeout(async () => { try { await db.doc("christmas/" + id).set({ ...XM.items[id], updatedAt: new Date().toISOString() }); delete XM.pending[id]; $("xMsg").textContent = "Saved."; } catch (e) { delete XM.pending[id]; $("xMsg").textContent = "That change wasn't saved. Try again in a moment."; } }, 500);
+  }
+  function renderXmas() {
+    if ($("view-xmas").hidden) return;
+    $("xYearLbl").textContent = xYear();
+    const body = $("xBody"), list = xList(); body.replaceChildren();
+    for (const x of list) {
+      const field = (tag, props, key, num) => { const f = el(tag, props); f.disabled = !canWrite; f.addEventListener(tag === "select" ? "change" : "input", () => { XM.items[x.id][key] = num ? (f.value === "" ? null : Number(f.value)) : f.value; if (key === "status") f.closest("tr").classList.toggle("done", f.value !== "Idea"); xmasTotals(); xSave(x.id); }); return f; };
+      const ty = field("select", {}, "type"); ty.append(...XTYPES.map((t) => el("option", { value: t, textContent: t }))); ty.value = x.type || "Gift"; ty.setAttribute("aria-label", "Type");
+      const who = field("input", { type: "text", value: x.who || "", maxLength: 40, placeholder: "Who" }, "who"); who.setAttribute("aria-label", "For");
+      const it = field("input", { type: "text", value: x.item || "", maxLength: 80, placeholder: "Gift idea or cost" }, "item"); it.setAttribute("aria-label", "Item");
+      const bu = field("input", { type: "number", min: "0", step: "0.01", inputMode: "decimal", value: x.budget ?? "" }, "budget", true); bu.setAttribute("aria-label", "Budget");
+      const ac = field("input", { type: "number", min: "0", step: "0.01", inputMode: "decimal", value: x.actual ?? "" }, "actual", true); ac.setAttribute("aria-label", "Spent");
+      const st = field("select", {}, "status"); st.append(...XSTATUS.map((t) => el("option", { value: t, textContent: t }))); st.value = x.status || "Idea"; st.setAttribute("aria-label", "Status");
+      const del = el("button", { className: "rowbtn danger", type: "button", textContent: XM.confirm === x.id ? "Confirm" : "Delete" }); del.disabled = !canWrite;
+      del.addEventListener("click", async () => { if (XM.confirm !== x.id) { XM.confirm = x.id; renderXmas(); return; } XM.confirm = null; try { await db.doc("christmas/" + x.id).delete(); delete XM.items[x.id]; renderXmas(); } catch (e) { $("xMsg").textContent = "That item wasn't deleted. Try again in a moment."; } });
+      body.append(el("tr", { className: (x.status || "Idea") !== "Idea" ? "done" : "" }, [el("td", {}, [ty]), el("td", {}, [who]), el("td", {}, [it]), el("td", {}, [bu]), el("td", {}, [ac]), el("td", {}, [st]), el("td", {}, [del])]));
+    }
+    if (!list.length) body.append(el("tr", {}, [el("td", { colSpan: 7, className: "empty", textContent: canWrite ? "Nothing planned yet. Add your first gift or cost." : "Nothing planned yet." })]));
+    $("xAdd").disabled = !canWrite; $("xGoal").disabled = !canWrite || !xSaver();
+    xmasTotals();
+  }
+  function xmasTotals() {
+    const list = xList(), sum = (L, k) => r2(L.reduce((s, x) => s + (Number(x[k]) || 0), 0));
+    const plan = sum(list, "budget"), spent = sum(list, "actual"), sv = xSaver(), bal = sv ? Number(sv.balance) || 0 : 0;
+    const remainingPlan = r2(list.reduce((s, x) => s + ((x.status || "Idea") === "Idea" ? Number(x.budget) || 0 : 0), 0));
+    const need = r2(Math.max(0, remainingPlan - bal)), weds = xWedsLeft();
+    $("xPlan").textContent = money(plan, 0); $("xPlanSub").textContent = list.length + " items";
+    $("xSpent").textContent = money(spent, 0); $("xSpentSub").textContent = list.filter((x) => (x.status || "Idea") !== "Idea").length + " of " + list.length + " bought";
+    $("xSaver").textContent = sv ? money(bal, 0) : "—";
+    $("xNeed").textContent = money(need, 0);
+    $("xNeedSub").textContent = need > 0 && weds.length ? money(Math.ceil(need / weds.length), 0) + " a week over " + weds.length + " Wednesdays to Christmas" : need > 0 ? "Christmas is this week" : "Covered by the saver";
+    const byType = XTYPES.map((t) => { const L = list.filter((x) => (x.type || "Gift") === t); return [t, L]; }).filter(([, L]) => L.length);
+    $("xByType").replaceChildren(...(byType.length ? byType.map(([t, L]) => { const b = sum(L, "budget"), a = sum(L, "actual"); return el("tr", {}, [el("td", { textContent: t }), el("td", { className: "n num", textContent: L.length }), el("td", { className: "n num", textContent: money(b) }), el("td", { className: "n num", textContent: money(a) }), el("td", { className: "n num" + (b - a < 0 ? " status-bad" : ""), textContent: money(r2(b - a)) })]); }) : [el("tr", {}, [el("td", { colSpan: 5, className: "empty", textContent: "Nothing yet." })])]));
+    const gifts = list.filter((x) => (x.type || "Gift") === "Gift"), who = [...new Set(gifts.map((x) => (x.who || "").trim() || "Not set"))].sort();
+    $("xByWho").replaceChildren(...(who.length ? who.map((w) => { const L = gifts.filter((x) => ((x.who || "").trim() || "Not set") === w); return el("tr", {}, [el("td", { textContent: w }), el("td", { className: "n num", textContent: L.length }), el("td", { className: "n num", textContent: money(sum(L, "budget")) }), el("td", { className: "n num", textContent: money(sum(L, "actual")) }), el("td", { className: "n num", textContent: L.filter((x) => (x.status || "Idea") !== "Idea").length + "/" + L.length })]); }) : [el("tr", {}, [el("td", { colSpan: 5, className: "empty", textContent: "No gifts yet." })])]));
+  }
+  $("xAdd").addEventListener("click", async () => {
+    if (!db || !canWrite) return;
+    try { await db.collection("christmas").add({ year: xYear(), type: "Gift", who: "", item: "", budget: null, actual: null, status: "Idea", createdAt: new Date().toISOString() }); $("xMsg").textContent = "";
+      setTimeout(() => { const ins = $("xBody").querySelectorAll('input[type="text"]'); for (const i of ins) if (!i.value && i.placeholder === "Who") { i.focus(); break; } }, 50); }
+    catch (e) { $("xMsg").textContent = e && e.code === "quota_exceeded" ? "There's no room for more items. Delete some, then try again." : "The item wasn't added. Try again in a moment."; }
+  });
+  $("xGoal").addEventListener("click", async () => {
+    const sv = xSaver(); if (!sv || !db || !canWrite) return;
+    const plan = r2(xList().reduce((s, x) => s + ((x.status || "Idea") === "Idea" ? Number(x.budget) || 0 : 0), 0)); if (!(plan > 0)) { $("xMsg").textContent = "Add budgets to the things you haven't bought yet first."; return; }
+    try { await db.doc("saverGoals/" + saverId(sv.account)).set({ account: sv.account, target: plan, by: xYear() + "-12-24", updatedAt: new Date().toISOString() }); $("xMsg").textContent = "The " + sv.account + " saver target is now " + money(plan) + " (everything not bought yet) by 24 Dec. It shows on the Budget tab."; }
+    catch (e) { $("xMsg").textContent = "The target wasn't saved. Try again in a moment."; }
+  });
+  csvBuilders.xmas = () => ["christmas-" + xYear(), ["Type", "For", "Item", "Budget", "Spent", "Status"], xList().map((x) => [x.type || "Gift", x.who || "", x.item || "", x.budget ?? "", x.actual ?? "", x.status || "Idea"])];
+
   // ---------- Tabs ----------
-  const VIEWS = ["overview", "needs", "transactions", "bills", "income", "budget"];
+  const VIEWS = ["overview", "needs", "transactions", "bills", "income", "budget", "xmas"];
   function show(v) {
     if (!VIEWS.includes(v)) v = "overview";
     for (const x of VIEWS) { if (x === v) $("tab-" + x).setAttribute("aria-current", "page"); else $("tab-" + x).removeAttribute("aria-current"); $("view-" + x).hidden = x !== v; }
@@ -1651,7 +1739,7 @@
     $("pageTitle").textContent = $("tab-" + v).firstChild.textContent.trim();
     if (narrow()) setSide(false);
     if (location.hash.slice(1) !== v) history.replaceState(null, "", "#" + v);
-    if (v === "overview") renderOverview(); else if (v === "needs") renderNeeds(); else if (v === "bills") { fillBillAccounts(); renderBills(); } else if (v === "income") renderIncome(); else if (v === "budget") renderBudget(); else renderAll();
+    if (v === "overview") renderOverview(); else if (v === "needs") renderNeeds(); else if (v === "bills") { fillBillAccounts(); renderBills(); } else if (v === "income") renderIncome(); else if (v === "budget") renderBudget(); else if (v === "xmas") renderXmas(); else renderAll();
   }
   for (const b of document.querySelectorAll(".navitem")) b.addEventListener("click", () => show(b.dataset.view));
   // Menu groups open and close on click; the group holding the current page opens itself.
@@ -1724,6 +1812,7 @@
     if (db) db.collection("income").onSnapshot((snap) => { for (const d of snap.docs) if (INC[d.id] && !INC[d.id].dirty) { INC[d.id].items = (d.data().items || []).map((x) => ({ ...x })); INC[d.id].weeks = {}; for (const [w, L] of Object.entries(d.data().weeks || {})) INC[d.id].weeks[w] = copyItems(L); if (typeof d.data().help === "boolean") INC[d.id].help = d.data().help; INC[d.id].helpFixed = d.data().helpFixed ?? ""; INC[d.id].calc = true; } renderIncome(); renderBudget(); }, () => {});
     if (db) db.collection("bills").onSnapshot((snap) => { bills = {}; for (const d of snap.docs) bills[d.id] = d.data(); renderBills(); renderBudget(); }, () => {});
     if (db) db.collection("saverGoals").onSnapshot((snap) => { for (const k of Object.keys(SAVERS)) delete SAVERS[k]; for (const d of snap.docs) SAVERS[d.id] = d.data(); if (!$("bdTable").contains(document.activeElement)) renderBudget(); }, () => {});
+    if (db) db.collection("christmas").onSnapshot((snap) => { const keep = {}; for (const id of Object.keys(XM.pending || {})) if (XM.items[id]) keep[id] = XM.items[id]; XM.items = {}; for (const d of snap.docs) XM.items[d.id] = keep[d.id] || d.data(); if (!$("xBody").contains(document.activeElement)) renderXmas(); else xmasTotals(); }, () => {});
     if (db) db.collection("budget").onSnapshot((snap) => { for (const d of snap.docs) if (!BUD.dirty[d.id]) BUD.months[d.id] = d.data().alloc || {}; if (!$("bdTable").contains(document.activeElement)) renderBudget(); }, () => {});
     if (db) db.collection("tags").onSnapshot((snap) => { newTags = {}; for (const d of snap.docs) newTags[d.id] = d.data(); fillTagControls(); renderEverything(); }, () => {});
     renderEverything();
