@@ -532,10 +532,7 @@
       <div class="card-head"><div><h2>Transfers to make</h2><p class="note">Move these from 2Up Spending into each saver when the pay lands. "Moved" counts transfers into that saver seen in Up since this pay (up to the last data refresh); tick Done for anything you've moved that hasn't shown up yet.</p></div><button class="btn ghost csv" type="button" data-csv="paycheck">Download CSV</button></div>
       <div class="tablebox"><table><thead><tr><th style="width:3rem">Done</th><th>Move to</th><th class="n">Amount</th><th class="n">Moved</th><th class="n">Still to move</th><th>What it covers</th></tr></thead><tbody id="pcMoves"></tbody></table></div>
     </div>
-    <div class="grid2">
-      <div class="card"><div class="card-head"><div><h3>Bills from this pay</h3></div></div><div class="tablebox short"><table><thead><tr><th>Bill</th><th>Next due</th><th class="n">From this pay</th></tr></thead><tbody id="pcBills"></tbody></table></div></div>
-      <div class="card"><div class="card-head"><div><h3>Savings and spending from this pay</h3></div></div><div class="tablebox short"><table><thead><tr><th>Line</th><th class="n">From this pay</th></tr></thead><tbody id="pcOther"></tbody></table></div></div>
-    </div>
+    <div class="card"><div class="card-head"><div><h3>Bills from this pay</h3></div></div><div class="tablebox short"><table><thead><tr><th>Bill</th><th>Next due</th><th class="n">From this pay</th></tr></thead><tbody id="pcBills"></tbody></table></div></div>
     </div>
     <div id="pcForecast" class="stack" hidden>
       <div class="tiles" aria-label="Forecast">
@@ -2221,7 +2218,6 @@
     $("pcStillSub").textContent = still > 0 ? open + " transfer" + (open === 1 ? "" : "s") + " to do" + (pay.date > todayISO() ? " when the pay lands" : "") : toMove > 0 ? "All done" : "Nothing to move";
     $("pcBills").replaceChildren(...(billLines.length ? billLines.sort((a, b) => (a[0].next || "").localeCompare(b[0].next || "")).map(([r, a]) => el("tr", {}, [el("td", { textContent: r.label }), el("td", { className: "num", textContent: r.next ? dfmt(r.next) : "" }), amtCell(a)])) : [el("tr", {}, [el("td", { colSpan: 3, className: "empty", textContent: "No bills from this pay." })])]));
     setTimeout(() => setPcMode(FC.mode), 0);
-    $("pcOther").replaceChildren(...(otherLines.length ? otherLines.map(([l, a]) => el("tr", {}, [el("td", { textContent: l }), amtCell(a)])) : [el("tr", {}, [el("td", { colSpan: 2, className: "empty", textContent: "Nothing else from this pay." })])]));
   }
   $("pcPay").addEventListener("change", () => { PC.sel = $("pcPay").value; renderPaycheck(); });
   for (const c of document.querySelectorAll("[data-goto]")) c.addEventListener("click", () => show(c.dataset.goto));
