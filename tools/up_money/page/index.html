@@ -217,6 +217,7 @@
   .bud .stick { position: sticky; left: 0; background: var(--raised); z-index: 1; min-width: 17rem; }
   @media (max-width: 640px) { .bud .stick { min-width: 11rem; } }
   .stat.neg { color: var(--negative); }
+  .status-good { color: var(--positive); }
   .bud tr.sec .stick { background: var(--surface); } .bud tr.foot .stick { background: var(--cobalt-tint); }
   .xm input, .xm select { width: 100%; min-width: 0; box-sizing: border-box; height: 30px; font: inherit; font-size: 13px; color: var(--ink); background: var(--raised); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 4px 6px; }
   .xm input[type="number"] { text-align: right; }
@@ -262,6 +263,7 @@
     <div class="navsub" id="grp-budget" hidden>
       <button class="navitem sub" id="tab-bills" data-view="bills" type="button">Bills</button>
       <button class="navitem sub" id="tab-income" data-view="income" type="button">Income</button>
+      <button class="navitem sub" id="tab-savers" data-view="savers" type="button">Savers</button>
       <button class="navitem sub" id="tab-budget" data-view="budget" type="button">Budget</button>
       <button class="navitem sub" id="tab-xmas" data-view="xmas" type="button">Christmas</button>
       <button class="navitem sub" id="tab-loans" data-view="loans" type="button">Loans</button>
@@ -470,6 +472,20 @@
         <div class="incbar"><button class="btn ghost" type="button" data-add="kaylee">Add line</button><button class="btn" type="button" data-calc="kaylee">Calculate</button><span class="small muted" id="iKayMsg"></span></div>
         <div id="iKayOut"></div>
       </div>
+    </div>
+  </section>
+
+  <section id="view-savers" aria-labelledby="pageTitle" class="stack" hidden>
+    <div class="tiles" aria-label="Saver totals">
+      <div class="tile"><p class="label">Savings savers</p><span class="stat" id="svSavBal">—</span><p class="small muted" id="svSavSub">—</p></div>
+      <div class="tile"><p class="label">Bills savers</p><span class="stat" id="svBillBal">—</span><p class="small muted" id="svBillSub">—</p></div>
+      <div class="tile"><p class="label">Savings targets</p><span class="stat" id="svTarget">—</span><p class="small muted" id="svTargetSub">—</p></div>
+      <div class="tile"><p class="label">To save this month</p><span class="stat" id="svMonth">—</span><p class="small muted" id="svMonthSub">—</p></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div><h2>Your savers</h2><p class="note">Mark each saver as Bills (bills are paid from it, and it's offered in the Budget's bill dropdowns) or Savings (it has its own goal and shows in the Budget's Savers section). For Savings savers, set a target, a save-by date and which pays it saves from; the amount per pay is worked out here and filled into the Budget automatically. Changes save as you go.</p></div></div>
+      <div class="tablebox" style="max-height:none"><table class="xm" style="min-width:60rem"><thead><tr><th>Saver</th><th class="n">Balance</th><th style="width:8rem">Type</th><th class="n" style="width:7.5rem">Target $</th><th style="width:9.5rem">Save by</th><th>Save from</th><th>Plan</th></tr></thead><tbody id="svBody"></tbody></table></div>
+      <p class="small muted" id="svMsg"></p>
     </div>
   </section>
 
@@ -1519,6 +1535,10 @@
   // Kaylee's pay only goes to savers; bills and spending come out of Jai's weekly pays.
   // Savers take money from whichever pays are ticked on their line (Kaylee's only by default). Bills and spending can use any pay;
   // their suggestions only ever go on Jai's pays, so Kaylee's column stays empty unless you type into it.
+  // Each saver is either a Bills saver (bills are paid from it) or a Savings saver (has its own target). Set on the Savers tab;
+  // until then a saver that already pays a bill counts as Bills, everything else as Savings.
+  const saverType = (account) => { const g = SAVERS[saverId(account)]; if (g && (g.type === "bills" || g.type === "savings")) return g.type; return Object.values(bills).some((b) => b.account === account) || Object.values(LN.items).some((L) => L.account === account) ? "bills" : "savings"; };
+  const saversOf = (type) => balances.filter((b) => b.kind === "Saver" && saverType(b.account) === type).map((b) => b.account);
   const saverSrc = (account) => { const g = SAVERS[saverId(account)] || {}; return { kaylee: g.fromKaylee !== false, jai: !!g.fromJai }; };
   const payAllowed = (rowKey, payKey) => { if (!rowKey.startsWith("saver_")) return true; const src = saverSrc(rowKey.slice(6)); return payKey === "kaylee" ? src.kaylee : src.jai; };
   const cellVal = (m, row, pay) => { if (!payAllowed(row, pay)) return null;  const r = allocOf(m)[row]; const v = r ? r[pay] : undefined; return v === undefined || v === null || v === "" ? null : Number(v); };
@@ -1603,53 +1623,7 @@
     const kay = pays.filter((x) => x.key === "kaylee").length, jai = pays.length - kay;
     return { target: Number(g.target), by: g.by, bal, before: r2(before), need, pays: pays.length, kay, jai, perPay, sug, perMonth: r2(Object.values(sug).reduce((a, v) => a + v, 0)), late, src };
   }
-  function openSaverGoal(account) {
-    const m = bdMonth(), g = SAVERS[saverId(account)] || {}, kayNet = payFor("kaylee").net;
-    const back = el("div", { className: "modal-back" });
-    const tIn = el("input", { type: "number", id: "sgTarget", min: "0", step: "1", inputMode: "decimal", value: g.target ?? "" });
-    const dIn = el("input", { type: "date", id: "sgBy", value: g.by || "" });
-    for (const i of [tIn, dIn]) Object.assign(i.style, { font: "inherit", fontSize: "15px", padding: "6px 10px", border: "1px solid var(--hairline)", borderRadius: "var(--r-sm)", width: "100%", boxSizing: "border-box", color: "var(--ink)", background: "var(--raised)" });
-    const calc = el("div", { className: "small", style: "background:var(--cobalt-tint);border-radius:var(--r-sm);padding:10px 12px;line-height:20px" });
-    const err = el("p", { className: "small status-bad" }); err.hidden = true;
-    const preview = () => {
-      SAVERS.__preview = { target: Number(tIn.value), by: dIn.value }; const real = SAVERS[saverId(account)]; SAVERS[saverId(account)] = SAVERS.__preview;
-      const p = saverPlan(account, m); if (real) SAVERS[saverId(account)] = real; else delete SAVERS[saverId(account)]; delete SAVERS.__preview;
-      calc.replaceChildren();
-      if (!p) { calc.append("Enter a target and a save-by date to see how much to put aside each month."); return; }
-      const line = (a, b) => el("div", { style: "display:flex;justify-content:space-between;gap:12px" }, [el("span", { textContent: a }), el("strong", { className: "num", textContent: b })]);
-      calc.append(line("Target", money(p.target)), line("Balance today", money(p.bal)), p.before ? line("Already budgeted before " + monthName(m), money(p.before)) : "", line("Still to save", money(p.need)),
-        line("Pays left to " + dfmt(p.by) + [p.src.kaylee ? " · " + p.kay + " of Kaylee's" : "", p.src.jai ? " · " + p.jai + " of Jai's" : ""].join(""), String(p.pays)), line("Save each pay", money(p.perPay)),
-        line("This month (" + monthName(m) + ")", money(p.perMonth)),
-        p.src.kaylee && p.sug.kaylee && kayNet > 0 ? el("div", { className: "muted", style: "margin-top:4px", textContent: "That's " + Math.round(p.sug.kaylee / kayNet * 100) + "% of Kaylee's take-home of " + money(kayNet) + "." }) : "",
-        !p.src.kaylee && !p.src.jai ? el("div", { className: "status-bad", style: "margin-top:4px", textContent: "Tick at least one pay on the saver's line to save into it." }) : "",
-        p.late ? el("div", { className: "status-bad", style: "margin-top:4px", textContent: "No pay is left before the save-by date, so the whole amount is suggested on the next pay." }) : "");
-    };
-    tIn.addEventListener("input", preview); dIn.addEventListener("input", preview);
-    const cancel = el("button", { className: "btn ghost", type: "button", textContent: "Cancel" });
-    const del = el("button", { className: "btn ghost", type: "button", textContent: "Remove target" }); del.hidden = !g.target;
-    const ok = el("button", { className: "btn", type: "button", textContent: "Save target" });
-    const box = el("div", { className: "modal", role: "dialog" }, [
-      el("h3", { textContent: account + " saver", id: "sgTitle" }),
-      el("label", { className: "label", htmlFor: "sgTarget", textContent: "Target $" }), tIn,
-      el("label", { className: "label", htmlFor: "sgBy", textContent: "Save by" }), dIn, calc, err,
-      el("div", { className: "row" }, [del, cancel, ok])]);
-    box.setAttribute("aria-modal", "true"); box.setAttribute("aria-labelledby", "sgTitle");
-    back.append(box); document.body.append(back); tIn.focus(); preview();
-    const close = () => back.remove();
-    ok.disabled = del.disabled = !canWrite; if (!canWrite) { err.textContent = "Only editors can set targets."; err.hidden = false; }
-    ok.addEventListener("click", async () => {
-      const target = Number(tIn.value), by = dIn.value;
-      if (!(target > 0)) { err.textContent = "Enter a target above $0."; err.hidden = false; tIn.focus(); return; }
-      if (!by) { err.textContent = "Pick a save-by date."; err.hidden = false; dIn.focus(); return; }
-      ok.disabled = true;
-      try { const keepSrc = { fromKaylee: saverSrc(account).kaylee, fromJai: saverSrc(account).jai }; await db.doc("saverGoals/" + saverId(account)).set({ account, target: r2(target), by, ...keepSrc, updatedAt: new Date().toISOString() }); SAVERS[saverId(account)] = { account, target: r2(target), by, ...keepSrc }; close(); renderBudget(); }
-      catch (e) { ok.disabled = false; err.textContent = "The target wasn't saved. Try again in a moment."; err.hidden = false; }
-    });
-    del.addEventListener("click", async () => { try { const src = saverSrc(account); await db.doc("saverGoals/" + saverId(account)).set({ account, target: null, by: null, fromKaylee: src.kaylee, fromJai: src.jai, updatedAt: new Date().toISOString() }); SAVERS[saverId(account)] = { account, fromKaylee: src.kaylee, fromJai: src.jai }; close(); renderBudget(); } catch (e) { err.textContent = "The target wasn't removed. Try again in a moment."; err.hidden = false; } });
-    cancel.addEventListener("click", close);
-    back.addEventListener("click", (e) => { if (e.target === back) close(); });
-    box.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
-  }
+
   const isSaver = (a) => !!a && balances.some((b) => b.kind === "Saver" && b.account === a);
   function budgetRows(m) {
     const pays = budgetPays(m), last = lastMonthSpend(m), jaiPays = pays.filter((p) => p.jai), kay = pays.find((p) => p.key === "kaylee");
@@ -1664,7 +1638,7 @@
     const mapped = {}; for (const r of billRows) if (r.bill.category) mapped[r.bill.category] = r2((mapped[r.bill.category] || 0) + billMonthAmt(r.bill, m));
     const groups = cats.map((p) => ({ name: p.name, rows: p.children.map((c) => { const lm = last["cat_" + c.id] || 0, sugAmt = Math.max(0, Math.round(lm - (mapped[c.id] || 0))); return { key: "cat_" + c.id, kind: "cat", label: c.name, sub: mapped[c.id] ? "Includes bills mapped here" : "", last: lm, sug: spread(sugAmt, jaiPays) }; }) }));
     groups.push({ name: "Other", rows: [["other_transfers", "Transfers to people"], ["other_uncat", "Uncategorised"]].map(([k, l]) => ({ key: k, kind: "cat", label: l, sub: "", last: last[k] || 0, sug: spread(Math.max(0, Math.round(last[k] || 0)), jaiPays) })) });
-    const saverRows = balances.filter((b) => b.kind === "Saver").map((b) => { const g = saverPlan(b.account, m), billsHere = billRows.filter((r) => r.saver === b.account);
+    const saverRows = balances.filter((b) => b.kind === "Saver" && saverType(b.account) === "savings").map((b) => { const g = saverPlan(b.account, m), billsHere = billRows.filter((r) => r.saver === b.account);
       return { key: "saver_" + b.account, kind: "saver", label: b.account, account: b.account, plan: g, billKeys: billsHere.map((r) => r.key),
       sub: "Balance " + money(Number(b.balance) || 0) + (g ? " · target " + money(g.target, 0) + " by " + dfmt(g.by) + " · " + (g.need > 0 ? money(g.perPay, 0) + " a pay over " + g.pays + " pays" : "reached") : billsHere.length ? "" : " · no target yet") + (billsHere.length ? " · pays " + billsHere.length + " bill" + (billsHere.length > 1 ? "s" : "") + " (" + billsHere.map((r) => r.label).join(", ") + "), " + money(r2(billsHere.reduce((s, r) => s + Object.values(r.sug).reduce((a, v) => a + v, 0), 0))) + " going in for them this month from the Bills lines" : ""), last: null, sug: g ? g.sug : {} }; });
     return { pays, billRows, groups, saverRows, last };
@@ -1691,14 +1665,14 @@
     const line = (row, ind) => { const tot = el("td", { className: "n num" }); bdRefs.rowTot[row.key] = tot; all.push(row);
       let name = el("div", { textContent: row.label });
       let srcBox = "";
-      if (row.kind === "saver") { name = el("button", { type: "button", className: "crumb", textContent: row.label, style: "text-align:left" }); name.setAttribute("aria-label", row.label + ": target and save-by date"); name.addEventListener("click", () => openSaverGoal(row.account));
-        const src = saverSrc(row.account), box = (who, label) => { const c = el("input", { type: "checkbox", checked: src[who] }); c.disabled = !canWrite; c.addEventListener("change", () => saveSaverSrc(row.account, who, c.checked)); return el("label", {}, [c, " " + label]); };
-        srcBox = el("div", { className: "billopts" }, [el("span", { textContent: "Save from:" }), box("kaylee", "Kaylee's pay"), box("jai", "Jai's pays")]); }
+      if (row.kind === "saver") { name = el("button", { type: "button", className: "crumb", textContent: row.label, style: "text-align:left" }); name.setAttribute("aria-label", row.label + ": set its target on the Savers tab"); name.addEventListener("click", () => { SV.focus = row.account; show("savers"); });
+        const src = saverSrc(row.account); srcBox = el("span", { className: "sub", textContent: "Saves from " + (src.kaylee && src.jai ? "Kaylee's and Jai's pays" : src.kaylee ? "Kaylee's pay" : src.jai ? "Jai's pays" : "no pays (tick some on the Savers tab)") }); }
       const first = el("td", { className: "stick" + (ind ? " ind" : "") }, [name, row.sub ? el("span", { className: "sub", textContent: row.sub }) : "", srcBox]);
       if (row.kind === "bill") {
         const sel = el("select", {}, catOptions()); sel.value = row.bill.category || ""; sel.setAttribute("aria-label", "Category for " + row.label); sel.disabled = !canWrite;
         sel.addEventListener("change", () => saveBillOpt(row.bill.id, { category: sel.value || null }));
-        const sv = el("select", {}, [el("option", { value: "", textContent: "Choose a saver" }), ...balances.filter((b) => b.kind === "Saver").map((b) => el("option", { value: b.account, textContent: b.account }))]); sv.value = row.saver; sv.disabled = !canWrite; sv.setAttribute("aria-label", "Saver that pays " + row.label);
+        const billSavers = saversOf("bills"); if (row.saver && !billSavers.includes(row.saver)) billSavers.push(row.saver);
+        const sv = el("select", {}, [el("option", { value: "", textContent: billSavers.length ? "Choose a saver" : "No Bills savers yet" }), ...billSavers.map((a) => el("option", { value: a, textContent: a }))]); sv.value = row.saver; sv.disabled = !canWrite; sv.setAttribute("aria-label", "Saver that pays " + row.label);
         if (!row.saver) sv.style.borderColor = "var(--coral)";
         sv.addEventListener("change", () => { if (sv.value) saveBillOpt(row.bill.id, { account: sv.value }); });
         const al = el("button", { type: "button", className: "btn ghost csv", textContent: "Allocate" }); al.disabled = !canWrite || !Object.keys(row.sug).length;
@@ -1714,7 +1688,7 @@
     const section = (key, title, rows) => { const cells = R.pays.map((p) => { const td = el("td", { className: "n num" }); (bdRefs.secTot[key] = bdRefs.secTot[key] || {})[p.key] = td; return td; }); const tot = el("td", { className: "n num" }); bdRefs.secTot[key]._ = tot; const lastTot = rows.reduce((s, r) => s + (r.last || 0), 0);
       body.append(el("tr", { className: "sec" }, [el("td", { className: "stick", textContent: title }), el("td", { className: "n num", textContent: key === "spend" ? money(r2(lastTot)) : "" }), ...cells, tot])); };
     section("save", "Savers", R.saverRows);
-    { const sug = R.saverRows.reduce((s, r) => s + (r.sug.kaylee || 0), 0), kn = R.pays.find((p) => p.key === "kaylee").net; body.lastChild.firstChild.append(el("span", { className: "sub", textContent: sug ? "Suggested from Kaylee's pay: " + money(sug, 0) + (kn > 0 ? " of " + money(kn, 0) + " (" + Math.round(sug / kn * 100) + "%)" : "") : "Click a saver to set its target and save-by date; tick which pays it saves from" })); }
+    { const sug = R.saverRows.reduce((s, r) => s + (r.sug.kaylee || 0), 0), kn = R.pays.find((p) => p.key === "kaylee").net; body.lastChild.firstChild.append(el("span", { className: "sub", textContent: sug ? "Suggested from Kaylee's pay: " + money(sug, 0) + (kn > 0 ? " of " + money(kn, 0) + " (" + Math.round(sug / kn * 100) + "%)" : "") : "Savings savers only. Set targets, save-by dates and which pays they save from on the Savers tab" })); }
     for (const r of R.saverRows) body.append(line(r));
     section("bills", "Bills", R.billRows);
     { const rb = el("button", { type: "button", className: "btn ghost csv", textContent: "Refresh bills", style: "margin-left:12px" }); rb.disabled = !canWrite || !R.billRows.length;
@@ -1868,7 +1842,7 @@
   $("xGoal").addEventListener("click", async () => {
     const sv = xSaver(); if (!sv || !db || !canWrite) return;
     const plan = r2(xList().reduce((s, x) => s + ((x.status || "Idea") === "Idea" ? Number(x.budget) || 0 : 0), 0)); if (!(plan > 0)) { $("xMsg").textContent = "Add budgets to the things you haven't bought yet first."; return; }
-    try { await db.doc("saverGoals/" + saverId(sv.account)).set({ account: sv.account, target: plan, by: xYear() + "-12-24", updatedAt: new Date().toISOString() }); $("xMsg").textContent = "The " + sv.account + " saver target is now " + money(plan) + " (everything not bought yet) by 24 Dec. It shows on the Budget tab."; }
+    try { await db.doc("saverGoals/" + saverId(sv.account)).set({ ...(SAVERS[saverId(sv.account)] || {}), account: sv.account, type: "savings", target: plan, by: xYear() + "-12-24", updatedAt: new Date().toISOString() }); $("xMsg").textContent = "The " + sv.account + " saver target is now " + money(plan) + " (everything not bought yet) by 24 Dec. It shows on the Budget tab."; }
     catch (e) { $("xMsg").textContent = "The target wasn't saved. Try again in a moment."; }
   });
   csvBuilders.xmas = () => ["christmas-" + xYear(), ["Type", "For", "Item", "Budget", "Spent", "Status"], xList().map((x) => [x.type || "Gift", x.who || "", x.item || "", x.budget ?? "", x.actual ?? "", x.status || "Idea"])];
@@ -1960,8 +1934,59 @@
   });
   csvBuilders.loan = () => ["loan-" + ($("lName").value || "projection").toLowerCase().replace(/[^a-z0-9]+/g, "-"), ["Year", "Repaid", "Interest", "Principal", "Balance at end"], (LN.years || []).map((o) => [o.y, o.paid.toFixed(2), o.interest.toFixed(2), o.principal.toFixed(2), o.bal.toFixed(2)])];
 
+  // ---------- Savers ----------
+  // saverGoals/<id> also holds {type: "bills"|"savings"}. Edits save straight away (debounced per saver).
+  const SV = { timers: {}, gen: {}, focus: null };
+  function saveSaver(account, patch) {
+    if (!db || !canWrite) return;
+    const id = saverId(account); SAVERS[id] = { ...(SAVERS[id] || {}), account, ...patch, updatedAt: new Date().toISOString() };
+    renderSaverTotals(); clearTimeout(SV.timers[id]); $("svMsg").textContent = "Saving…"; const gen = (SV.gen[id] = (SV.gen[id] || 0) + 1);
+    SV.timers[id] = setTimeout(async () => { try { await db.doc("saverGoals/" + id).set(SAVERS[id]); if (SV.gen[id] === gen) $("svMsg").textContent = "Saved."; } catch (e) { $("svMsg").textContent = "That change wasn't saved. Try again in a moment."; } }, 500);
+  }
+  function renderSavers() {
+    if ($("view-savers").hidden) return;
+    const m = NOW_MONTH, body = $("svBody"); body.replaceChildren();
+    const list = balances.filter((b) => b.kind === "Saver");
+    for (const b of list) {
+      const a = b.account, g = SAVERS[saverId(a)] || {}, type = saverType(a), src = saverSrc(a), plan = el("td", { className: "small" });
+      const ty = el("select", {}, [el("option", { value: "savings", textContent: "Savings" }), el("option", { value: "bills", textContent: "Bills" })]); ty.value = type; ty.disabled = !canWrite; ty.setAttribute("aria-label", a + " type");
+      const tIn = el("input", { type: "number", min: "0", step: "1", inputMode: "decimal", value: g.target ?? "" }); tIn.setAttribute("aria-label", a + " target");
+      const dIn = el("input", { type: "date", value: g.by || "" }); dIn.setAttribute("aria-label", a + " save by");
+      const box = (who, label) => { const c = el("input", { type: "checkbox", checked: src[who] }); Object.assign(c.style, { width: "16px", height: "16px", margin: "0", accentColor: "var(--cobalt)" }); c.disabled = !canWrite || type !== "savings"; c.addEventListener("change", () => { saveSaver(a, who === "kaylee" ? { fromKaylee: c.checked } : { fromJai: c.checked }); drawPlan(); }); return el("label", { style: "display:inline-flex;gap:6px;align-items:center;margin-right:12px;font-size:13px" }, [c, label]); };
+      const from = el("td", {}, [box("kaylee", "Kaylee's pay"), box("jai", "Jai's pays")]);
+      for (const f of [tIn, dIn]) f.disabled = !canWrite || type !== "savings";
+      const drawPlan = () => {
+        plan.replaceChildren();
+        if (saverType(a) !== "savings") { const n = Object.values(bills).filter((x) => x.account === a).length + Object.values(LN.items).filter((L) => L.account === a).length; plan.append(el("span", { className: "muted", textContent: n ? "Pays " + n + " bill" + (n > 1 ? "s" : "") : "No bills assigned yet" })); return; }
+        const p = saverPlan(a, m);
+        if (!p) { plan.append(el("span", { className: "muted", textContent: "Set a target and date" })); return; }
+        if (p.need <= 0) { plan.append(el("span", { className: "status-good", textContent: "Target reached" })); return; }
+        plan.append(el("strong", { className: "num", textContent: money(p.perPay, 0) + " a pay" }), el("div", { className: "muted", textContent: money(p.need) + " to go over " + p.pays + " pays" + (p.perMonth ? " · " + money(p.perMonth, 0) + " in " + monthName(m) : "") }));
+        if (p.late) plan.append(el("div", { className: "status-bad", textContent: "No pay left before the date" }));
+      };
+      ty.addEventListener("change", () => { saveSaver(a, { type: ty.value }); renderSavers(); });
+      tIn.addEventListener("input", () => { saveSaver(a, { target: tIn.value === "" ? null : r2(Number(tIn.value)) }); drawPlan(); });
+      dIn.addEventListener("input", () => { saveSaver(a, { by: dIn.value || null }); drawPlan(); });
+      drawPlan();
+      const tr = el("tr", {}, [el("td", { className: "desc", textContent: a }), el("td", { className: "n num", textContent: money(Number(b.balance) || 0) }), el("td", {}, [ty]), el("td", {}, [tIn]), el("td", {}, [dIn]), from, plan]);
+      if (SV.focus === a) { tr.style.background = "var(--cobalt-tint)"; setTimeout(() => { tr.scrollIntoView({ block: "center" }); (type === "savings" ? tIn : ty).focus(); }, 50); }
+      body.append(tr);
+    }
+    SV.focus = null;
+    if (!list.length) body.append(el("tr", {}, [el("td", { colSpan: 7, className: "empty", textContent: "No savers found." })]));
+    renderSaverTotals();
+  }
+  function renderSaverTotals() {
+    const sav = saversOf("savings"), bil = saversOf("bills"), bal = (L) => r2(L.reduce((s, a) => s + (Number((balances.find((b) => b.account === a) || {}).balance) || 0), 0));
+    $("svSavBal").textContent = money(bal(sav), 0); $("svSavSub").textContent = sav.length + " savers";
+    $("svBillBal").textContent = money(bal(bil), 0); $("svBillSub").textContent = bil.length + " savers";
+    const plans = sav.map((a) => saverPlan(a, NOW_MONTH)).filter(Boolean);
+    $("svTarget").textContent = money(r2(plans.reduce((s, p) => s + p.target, 0)), 0); $("svTargetSub").textContent = plans.length + " with a target";
+    $("svMonth").textContent = money(r2(plans.reduce((s, p) => s + p.perMonth, 0)), 0); $("svMonthSub").textContent = "Across Savings savers in " + monthName(NOW_MONTH);
+  }
+
   // ---------- Tabs ----------
-  const VIEWS = ["overview", "needs", "transactions", "bills", "income", "budget", "xmas", "loans"];
+  const VIEWS = ["overview", "needs", "transactions", "bills", "income", "savers", "budget", "xmas", "loans"];
   function show(v) {
     if (!VIEWS.includes(v)) v = "overview";
     for (const x of VIEWS) { if (x === v) $("tab-" + x).setAttribute("aria-current", "page"); else $("tab-" + x).removeAttribute("aria-current"); $("view-" + x).hidden = x !== v; }
@@ -1969,7 +1994,7 @@
     $("pageTitle").textContent = $("tab-" + v).firstChild.textContent.trim();
     if (narrow()) setSide(false);
     if (location.hash.slice(1) !== v) history.replaceState(null, "", "#" + v);
-    if (v === "overview") renderOverview(); else if (v === "needs") renderNeeds(); else if (v === "bills") { fillBillAccounts(); renderBills(); } else if (v === "income") renderIncome(); else if (v === "budget") renderBudget(); else if (v === "xmas") renderXmas(); else if (v === "loans") renderLoans(); else renderAll();
+    if (v === "overview") renderOverview(); else if (v === "needs") renderNeeds(); else if (v === "bills") { fillBillAccounts(); renderBills(); } else if (v === "income") renderIncome(); else if (v === "budget") renderBudget(); else if (v === "xmas") renderXmas(); else if (v === "loans") renderLoans(); else if (v === "savers") renderSavers(); else renderAll();
   }
   for (const b of document.querySelectorAll(".navitem")) b.addEventListener("click", () => show(b.dataset.view));
   // Menu groups open and close on click; the group holding the current page opens itself.
@@ -2041,7 +2066,7 @@
     if (db) db.collection("tagChanges").onSnapshot((snap) => { tagChanges = {}; for (const d of snap.docs) tagChanges[d.id] = dd(d); fillTagControls(); renderEverything(); }, () => {});
     if (db) db.collection("income").onSnapshot((snap) => { for (const d of snap.docs) if (INC[d.id] && !INC[d.id].dirty) { INC[d.id].items = (dd(d).items || []).map((x) => ({ ...x })); INC[d.id].weeks = {}; for (const [w, L] of Object.entries(dd(d).weeks || {})) INC[d.id].weeks[w] = copyItems(L); if (typeof dd(d).help === "boolean") INC[d.id].help = dd(d).help; INC[d.id].helpFixed = dd(d).helpFixed ?? ""; INC[d.id].calc = true; } renderIncome(); renderBudget(); }, () => {});
     if (db) db.collection("bills").onSnapshot((snap) => { bills = {}; for (const d of snap.docs) bills[d.id] = dd(d); renderBills(); renderBudget(); }, () => {});
-    if (db) db.collection("saverGoals").onSnapshot((snap) => { for (const k of Object.keys(SAVERS)) delete SAVERS[k]; for (const d of snap.docs) SAVERS[d.id] = dd(d); if (!$("bdTable").contains(document.activeElement)) renderBudget(); }, () => {});
+    if (db) db.collection("saverGoals").onSnapshot((snap) => { for (const k of Object.keys(SAVERS)) delete SAVERS[k]; for (const d of snap.docs) SAVERS[d.id] = dd(d); if (!$("bdTable").contains(document.activeElement)) renderBudget(); if (!$("svBody").contains(document.activeElement)) renderSavers(); }, () => {});
     if (db) db.collection("christmas").onSnapshot((snap) => { const keep = {}; for (const id of Object.keys(XM.pending || {})) if (XM.items[id]) keep[id] = XM.items[id]; XM.items = {}; for (const d of snap.docs) XM.items[d.id] = keep[d.id] || dd(d); if (!$("xBody").contains(document.activeElement)) renderXmas(); else xmasTotals(); }, () => {});
     if (db) db.collection("loans").onSnapshot((snap) => { LN.items = {}; for (const d of snap.docs) LN.items[d.id] = dd(d); renderLoans(); if (!$("bdTable").contains(document.activeElement)) renderBudget(); }, () => {});
     if (db) db.collection("budget").onSnapshot((snap) => { for (const d of snap.docs) if (!BUD.dirty[d.id]) BUD.months[d.id] = dd(d).alloc || {}; if (!$("bdTable").contains(document.activeElement)) renderBudget(); }, () => {});
