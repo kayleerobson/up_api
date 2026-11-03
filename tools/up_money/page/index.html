@@ -455,13 +455,13 @@
   <section id="view-budget" aria-labelledby="pageTitle" class="stack" hidden>
     <div class="tiles" aria-label="Budget totals">
       <div class="tile"><p class="label">Take-home this month</p><span class="stat" id="bdIn">—</span><p class="small muted" id="bdInSub">From the Income tab</p></div>
-      <div class="tile"><p class="label">Allocated</p><span class="stat" id="bdAlloc">—</span><p class="small muted" id="bdAllocSub">Bills, spending and savers</p></div>
+      <div class="tile"><p class="label">Allocated</p><span class="stat" id="bdAlloc">—</span><p class="small muted" id="bdAllocSub">Savers, bills and spending</p></div>
       <div class="tile"><p class="label">Left to allocate</p><span class="stat" id="bdLeft">—</span><p class="small muted">Take-home minus allocated</p></div>
       <div class="tile"><p class="label">Spent last month</p><span class="stat" id="bdLast">—</span><p class="small muted" id="bdLastSub">—</p></div>
     </div>
     <div class="card">
       <div class="monthbar"><div class="field"><label class="label" for="bdMonth">Month</label><input id="bdMonth" type="month"></div>
-        <p class="small muted">Each column is one pay: Kaylee's monthly pay and each of Jai's Wednesdays, using take-home from the Income tab. Type how much of each pay goes to each line; the right-hand column rolls the month up. Faint numbers are suggestions; Fill suggestions copies them into empty boxes.</p></div>
+        <p class="small muted">Each column is one pay, using take-home from the Income tab. Kaylee's monthly pay goes to savers only; bills and spending come out of Jai's Wednesday pays. Fill in savers first, then bills, then spending; the right-hand column rolls the month up. Faint numbers are suggestions; Fill suggestions copies them into empty boxes.</p></div>
       <div class="incbar"><button class="btn" type="button" id="bdFill">Fill suggestions</button><button class="btn ghost" type="button" id="bdClear">Clear this month</button><span class="small muted" id="bdMsg"></span></div>
     </div>
     <div class="card">
@@ -1439,7 +1439,9 @@
     return out;
   }
   const allocOf = (m) => (BUD.months[m] = BUD.months[m] || {});
-  const cellVal = (m, row, pay) => { const r = allocOf(m)[row]; const v = r ? r[pay] : undefined; return v === undefined || v === null || v === "" ? null : Number(v); };
+  // Kaylee's pay only goes to savers; bills and spending come out of Jai's weekly pays.
+  const payAllowed = (rowKey, payKey) => rowKey.startsWith("saver_") || payKey !== "kaylee";
+  const cellVal = (m, row, pay) => { if (!payAllowed(row, pay)) return null;  const r = allocOf(m)[row]; const v = r ? r[pay] : undefined; return v === undefined || v === null || v === "" ? null : Number(v); };
   // Net spending last month per Up subcategory, plus transfers to people and uncategorised spending.
   function lastMonthSpend(m) {
     const pm = prevMonth(m), out = {};
@@ -1463,12 +1465,12 @@
     const billRows = Object.entries(bills).map(([id, b]) => ({ id, ...b })).filter((b) => isActive(b) || billDueIn(b, m).length).sort((a, b) => a.name.localeCompare(b.name)).map((b) => {
       const due = billMonthAmt(b, m), sug = {};
       if (b.saveWeekly) { for (const p of jaiPays) sug[p.key] = billWeekly(b); }
-      else if (due) { const p = kay.net > 0 || !jaiPays.length ? kay : jaiPays[0]; sug[p.key] = due; }
+      else if (jaiPays.length) for (const d of billDueIn(b, m)) { const p = [...jaiPays].reverse().find((x) => x.key.slice(4) <= d) || jaiPays[0]; sug[p.key] = r2((sug[p.key] || 0) + (Number(b.amount) || 0)); }
       return { key: "bill_" + b.id, kind: "bill", bill: b, label: b.name, sub: (b.from ? b.from + " · " : "") + (due ? money(due) + " due this month" : "Nothing due this month") + (b.saveWeekly ? " · saving " + money(billWeekly(b)) + "/week" : ""), last: null, sug };
     });
     const mapped = {}; for (const r of billRows) if (r.bill.category) mapped[r.bill.category] = r2((mapped[r.bill.category] || 0) + billMonthAmt(r.bill, m));
-    const groups = cats.map((p) => ({ name: p.name, rows: p.children.map((c) => { const lm = last["cat_" + c.id] || 0, sugAmt = Math.max(0, Math.round(lm - (mapped[c.id] || 0))); return { key: "cat_" + c.id, kind: "cat", label: c.name, sub: mapped[c.id] ? "Includes bills mapped here" : "", last: lm, sug: spread(sugAmt, pays) }; }) }));
-    groups.push({ name: "Other", rows: [["other_transfers", "Transfers to people"], ["other_uncat", "Uncategorised"]].map(([k, l]) => ({ key: k, kind: "cat", label: l, sub: "", last: last[k] || 0, sug: spread(Math.max(0, Math.round(last[k] || 0)), pays) })) });
+    const groups = cats.map((p) => ({ name: p.name, rows: p.children.map((c) => { const lm = last["cat_" + c.id] || 0, sugAmt = Math.max(0, Math.round(lm - (mapped[c.id] || 0))); return { key: "cat_" + c.id, kind: "cat", label: c.name, sub: mapped[c.id] ? "Includes bills mapped here" : "", last: lm, sug: spread(sugAmt, jaiPays) }; }) }));
+    groups.push({ name: "Other", rows: [["other_transfers", "Transfers to people"], ["other_uncat", "Uncategorised"]].map(([k, l]) => ({ key: k, kind: "cat", label: l, sub: "", last: last[k] || 0, sug: spread(Math.max(0, Math.round(last[k] || 0)), jaiPays) })) });
     const saverRows = balances.filter((b) => b.kind === "Saver").map((b) => ({ key: "saver_" + b.account, kind: "saver", label: b.account, sub: "Balance " + money(Number(b.balance) || 0), last: null, sug: {} }));
     return { pays, billRows, groups, saverRows, last };
   }
@@ -1483,6 +1485,7 @@
       ...R.pays.map((p) => { const th = el("th", { className: "n pay" }); th.append(p.label, el("span", { className: "sub", textContent: p.sub + " · " + money(p.net, 0) })); return th; }), el("th", { className: "n", textContent: "Month total" })]);
     const body = el("tbody");
     const cellInput = (row) => R.pays.map((p) => {
+      if (!payAllowed(row.key, p.key)) return el("td", { className: "n small muted", textContent: "—", title: "Kaylee's pay goes to savers only" });
       const v = cellVal(m, row.key, p.key), sug = row.sug[p.key];
       const inp = el("input", { className: "bc", type: "number", min: "0", step: "0.01", inputMode: "decimal", value: v === null ? "" : v, placeholder: sug ? String(Math.round(sug * 100) / 100) : "" });
       inp.setAttribute("aria-label", row.label + ", " + p.label + " " + p.sub);
@@ -1501,6 +1504,8 @@
       return el("tr", {}, [first, el("td", { className: "n num", textContent: row.last === null ? "" : money(row.last) }), ...cellInput(row), tot]); };
     const section = (key, title, rows) => { const cells = R.pays.map((p) => { const td = el("td", { className: "n num" }); (bdRefs.secTot[key] = bdRefs.secTot[key] || {})[p.key] = td; return td; }); const tot = el("td", { className: "n num" }); bdRefs.secTot[key]._ = tot; const lastTot = rows.reduce((s, r) => s + (r.last || 0), 0);
       body.append(el("tr", { className: "sec" }, [el("td", { className: "stick", textContent: title }), el("td", { className: "n num", textContent: key === "spend" ? money(r2(lastTot)) : "" }), ...cells, tot])); };
+    section("save", "Savers", R.saverRows);
+    for (const r of R.saverRows) body.append(line(r));
     section("bills", "Bills", R.billRows);
     if (!R.billRows.length) body.append(el("tr", {}, [el("td", { colSpan: R.pays.length + 3, className: "small muted", textContent: "No bills yet. Add them on the Bills tab." })]));
     for (const r of R.billRows) body.append(line(r));
@@ -1512,8 +1517,6 @@
       body.append(el("tr", { className: "grp" }, [el("td", { className: "stick" }, [btn]), el("td", { className: "n num", textContent: money(gl) }), el("td", { colSpan: R.pays.length }), gt]));
       if (open) for (const r of g.rows) body.append(line(r, true)); else all.push(...g.rows);
     }
-    section("save", "Savers", R.saverRows);
-    for (const r of R.saverRows) body.append(line(r));
     const foot = (label, key, cls) => { const cells = R.pays.map((p) => { const td = el("td", { className: "n num" }); (bdRefs[key])[p.key] = td; return td; }); const tot = el("td", { className: "n num" }); bdRefs[key]._ = tot; return el("tr", { className: "foot" }, [el("td", { className: "stick", textContent: label }), el("td"), ...cells, tot]); };
     bdRefs.colPay = {}; body.append(foot("Take-home", "colPay"), foot("Allocated", "colAlloc"), foot("Left to allocate", "colLeft"));
     bdRefs.all = all;
