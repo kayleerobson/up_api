@@ -509,8 +509,10 @@
     <nav class="subtabs" aria-label="Budget views"><button class="chip" type="button" data-goto="budget">Monthly planning</button><button class="chip" type="button" data-goto="paycheck">Pay-check planning</button></nav>
     <div class="card">
       <div class="monthbar"><div class="field" style="width:16rem"><label class="label" for="pcPay">Pay</label><select id="pcPay" style="height:34px;font:inherit;font-size:13px;border:1px solid var(--hairline);border-radius:var(--r-sm);padding:4px 8px;background:var(--raised);color:var(--ink)"></select></div>
-        <p class="small muted">Everything one pay is allocated to on Monthly planning, and the transfers to make when it lands. Lines with nothing typed in yet show the suggested amount (marked "suggested").</p></div>
+        <p class="small muted" id="pcIntro"></p></div>
+      <div class="subtabs" role="group" aria-label="Pay view" style="margin-top:12px"><button class="chip" type="button" data-pcmode="budget">Budget</button><button class="chip" type="button" data-pcmode="forecast">Forecast</button><button class="chip" type="button" data-pcmode="actual">Actuals</button></div>
     </div>
+    <div id="pcBudget" class="stack">
     <div class="tiles" aria-label="This pay">
       <div class="tile"><p class="label">Take-home</p><span class="stat" id="pcNet">—</span><p class="small muted" id="pcNetSub">—</p></div>
       <div class="tile"><p class="label">Allocated</p><span class="stat" id="pcAlloc">—</span><p class="small muted" id="pcAllocSub">—</p></div>
@@ -524,6 +526,31 @@
       <div class="card"><div class="card-head"><div><h3>Bills from this pay</h3></div></div><div class="tablebox short"><table><thead><tr><th>Bill</th><th>Next due</th><th class="n">From this pay</th></tr></thead><tbody id="pcBills"></tbody></table></div></div>
       <div class="card"><div class="card-head"><div><h3>Savings and spending from this pay</h3></div></div><div class="tablebox short"><table><thead><tr><th>Line</th><th class="n">From this pay</th></tr></thead><tbody id="pcOther"></tbody></table></div></div>
     </div>
+    </div>
+    <div id="pcForecast" class="stack" hidden>
+      <div class="tiles" aria-label="Forecast">
+        <div class="tile"><p class="label">Pay received</p><div style="display:flex;align-items:baseline;gap:6px"><span class="stat">$</span><input id="fcIncome" type="number" min="0" step="0.01" inputmode="decimal" style="font:inherit;font-size:28px;font-weight:600;color:var(--cobalt);width:100%;min-width:0;border:1px solid var(--hairline);border-radius:var(--r-sm);padding:2px 6px"></div><p class="small muted" id="fcIncomeSub">—</p></div>
+        <div class="tile"><p class="label">Forecast allocated</p><span class="stat" id="fcAlloc">—</span><p class="small muted" id="fcAllocSub">—</p></div>
+        <div class="tile"><p class="label">Left to allocate</p><span class="stat" id="fcLeft">—</span><p class="small muted" id="fcLeftSub">Aim for $0: every dollar has a job</p></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div><h2>Forecast for this pay</h2><p class="note">Starts from the budget. Enter what the pay actually came to, then move money between lines until Left to allocate is $0. Changes save as you go and don't change Monthly planning.</p></div><button class="btn ghost" type="button" id="fcReset">Reset to budget</button></div>
+        <div class="tablebox" style="max-height:none"><table><thead><tr><th>Line</th><th class="n">Budget</th><th class="n" style="width:8rem">Forecast</th><th class="n">Change</th></tr></thead><tbody id="fcBody"></tbody></table></div>
+        <p class="small muted" id="fcMsg"></p>
+      </div>
+    </div>
+    <div id="pcActual" class="stack" hidden>
+      <div class="tiles" aria-label="Actuals">
+        <div class="tile"><p class="label">Money in</p><span class="stat" id="acIn">—</span><p class="small muted" id="acInSub">—</p></div>
+        <div class="tile"><p class="label">Spent and set aside</p><span class="stat" id="acOut">—</span><p class="small muted" id="acOutSub">—</p></div>
+        <div class="tile"><p class="label">Against forecast</p><span class="stat" id="acVar">—</span><p class="small muted" id="acVarSub">—</p></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div><h2>How we're tracking</h2><p class="note" id="acNote"></p></div></div>
+        <div class="tablebox" style="max-height:none"><table><thead><tr><th>Line</th><th class="n">Forecast</th><th class="n">Actual</th><th class="n">Left</th><th style="width:9rem"></th></tr></thead><tbody id="acBody"></tbody></table></div>
+      </div>
+    </div>
+
   </section>
 
   <section id="view-savers" aria-labelledby="pageTitle" class="stack" hidden>
@@ -2160,11 +2187,105 @@
     PC.rows = order.map((d) => [d, moves[d].v, moves[d].what.join(", ")]);
     $("pcMoves").replaceChildren(...(order.length ? order.map((d) => el("tr", {}, [el("td", { className: "desc" + (d.startsWith("No saver") ? " status-bad" : ""), textContent: d, style: "white-space:nowrap" }), amtCell({ v: moves[d].v, sug: moves[d].sug }), el("td", { className: "small muted", textContent: moves[d].what.join(", ") })])) : [el("tr", {}, [el("td", { colSpan: 3, className: "empty", textContent: "Nothing allocated to this pay yet. Fill it in on Monthly planning." })])]));
     $("pcBills").replaceChildren(...(billLines.length ? billLines.sort((a, b) => (a[0].next || "").localeCompare(b[0].next || "")).map(([r, a]) => el("tr", {}, [el("td", { textContent: r.label }), el("td", { className: "num", textContent: r.next ? dfmt(r.next) : "" }), amtCell(a)])) : [el("tr", {}, [el("td", { colSpan: 3, className: "empty", textContent: "No bills from this pay." })])]));
+    setTimeout(() => setPcMode(FC.mode), 0);
     $("pcOther").replaceChildren(...(otherLines.length ? otherLines.map(([l, a]) => el("tr", {}, [el("td", { textContent: l }), amtCell(a)])) : [el("tr", {}, [el("td", { colSpan: 2, className: "empty", textContent: "Nothing else from this pay." })])]));
   }
   $("pcPay").addEventListener("change", () => { PC.sel = $("pcPay").value; renderPaycheck(); });
   for (const c of document.querySelectorAll("[data-goto]")) c.addEventListener("click", () => show(c.dataset.goto));
   csvBuilders.paycheck = () => ["paycheck-" + (PC.sel || "").replace("|", "-"), ["Move to", "Amount", "What it covers"], PC.rows.map((r) => [r[0], r[1].toFixed(2), r[2]])];
+
+  // ---------- Pay-check Forecast and Actuals ----------
+  // forecast/<YYYY-MM>_<payKey>: {income, lines: {rowKey: amount}}. Starts from the budget for that pay.
+  const FC = { items: {}, timer: null, gen: 0, mode: "budget" };
+  const fcId = (m, key) => m + "_" + key;
+  function pcContext() {
+    const pays = pcPays(); if (!PC.sel) return null; const [m, key] = PC.sel.split("|"), pay = pays.find((p) => p.m === m && p.key === key); if (!pay) return null;
+    const R = budgetRows(m), lines = [];
+    const push = (sec, r) => { const v = cellVal(m, r.key, key); lines.push({ sec, key: r.key, label: r.label, budget: v || 0, saver: r.saver, account: r.account }); };
+    for (const r of R.saverRows) push("Savers", r); for (const r of R.billRows) push("Bills", r); for (const g of R.groups) for (const r of g.rows) push(g.name === "Other" ? "Spending · Other" : "Spending · " + g.name, r);
+    // Pay period: from this pay up to the day before the same person's next pay.
+    const next = key === "kaylee" ? addMonths(m + "-15", 1) : addDays(pay.date, 7), end = addDays(next, -1);
+    return { m, key, pay, lines, end, budgetTotal: r2(lines.reduce((s, l) => s + l.budget, 0)) };
+  }
+  const fcGet = (c) => { const f = FC.items[fcId(c.m, c.key)]; return { income: f && f.income != null ? Number(f.income) : c.pay.net, lines: (f && f.lines) || {} , saved: !!f }; };
+  const fcVal = (c, f, l) => f.lines[l.key] != null ? Number(f.lines[l.key]) : l.budget;
+  function fcSave(c, f) {
+    if (!db || !canWrite) return; const id = fcId(c.m, c.key), data = { income: f.income, lines: f.lines, updatedAt: new Date().toISOString() };
+    FC.items[id] = data; clearTimeout(FC.timer); $("fcMsg").textContent = "Saving…"; const gen = ++FC.gen;
+    FC.timer = setTimeout(async () => { try { await db.doc("forecast/" + id).set(data); if (gen === FC.gen) $("fcMsg").textContent = "Saved."; } catch (e) { $("fcMsg").textContent = "That change wasn't saved. Try again in a moment."; } }, 600);
+  }
+  function renderForecast() {
+    const c = pcContext(); if (!c) return; const f = fcGet(c), body = $("fcBody"); body.replaceChildren();
+    if (document.activeElement !== $("fcIncome")) $("fcIncome").value = f.income;
+    $("fcIncome").disabled = !canWrite; $("fcReset").disabled = !canWrite;
+    $("fcIncomeSub").textContent = "Budgeted " + money(c.pay.net) + " · " + c.pay.label + ", " + wdfmt(c.pay.date);
+    let sec = null; const refs = [];
+    for (const l of c.lines) {
+      const fv = fcVal(c, f, l); if (!l.budget && !fv && !l.sec.startsWith("Spending")) continue;
+      if (l.sec !== sec) { sec = l.sec; body.append(el("tr", { className: "sec" }, [el("td", { colSpan: 4, textContent: sec, style: "font-weight:600;background:var(--surface)" })])); }
+      const inp = el("input", { type: "number", min: "0", step: "0.01", inputMode: "decimal", value: fv || "" , placeholder: "0" }); Object.assign(inp.style, { width: "7rem", textAlign: "right", font: "inherit", fontSize: "13px", border: "1px solid var(--hairline)", borderRadius: "var(--r-sm)", padding: "4px 6px" }); inp.disabled = !canWrite; inp.setAttribute("aria-label", "Forecast for " + l.label);
+      const ch = el("td", { className: "n num" });
+      const upd = () => { const d = r2((Number(inp.value) || 0) - l.budget); ch.textContent = d ? (d > 0 ? "+" : "") + money(d) : ""; ch.className = "n num " + (d > 0 ? "status-bad" : d < 0 ? "status-good" : ""); };
+      inp.addEventListener("input", () => { const ff = fcGet(c); ff.lines = { ...ff.lines, [l.key]: inp.value === "" ? 0 : Number(inp.value) }; fcSave(c, ff); upd(); fcTotals(c); });
+      upd(); refs.push(inp);
+      body.append(el("tr", {}, [el("td", { textContent: l.label }), el("td", { className: "n num muted", textContent: l.budget ? money(l.budget) : "" }), el("td", { className: "n" }, [inp]), ch]));
+    }
+    fcTotals(c);
+  }
+  function fcTotals(c) {
+    const f = fcGet(c), tot = r2(c.lines.reduce((s, l) => s + fcVal(c, f, l), 0)), left = r2(f.income - tot);
+    $("fcAlloc").textContent = money(tot, 0); $("fcAllocSub").textContent = "Budget was " + money(c.budgetTotal, 0);
+    $("fcLeft").textContent = money(left); $("fcLeft").classList.toggle("neg", Math.abs(left) >= 0.005); $("fcLeft").classList.toggle("status-good", Math.abs(left) < 0.005);
+    $("fcLeftSub").textContent = Math.abs(left) < 0.005 ? "Every dollar has a job" : left > 0 ? "Give this to a line until it's $0" : "Over-allocated: take this off a line";
+  }
+  // Actuals: what happened between this pay and the next one.
+  function actualFor(c, l) {
+    const inPer = (t) => t.date >= c.pay.date && t.date <= c.end;
+    let items;
+    if (l.sec === "Savers") items = tx.filter((t) => inPer(t) && t.internal && t.amount > 0 && t.account === l.label);
+    else items = tx.filter((t) => inPer(t) && budgetKey(t) === l.key);
+    const v = l.sec === "Savers" ? r2(items.reduce((s, t) => s + t.amount, 0)) : r2(items.reduce((s, t) => s - t.amount, 0));
+    return { v, items };
+  }
+  function openActual(c, title, items, sign) {
+    drawer.key = "actual|" + title; drawer.parentKey = ""; drawer.refresh = () => {};
+    const rows = items.sort((a, b) => (a.date < b.date ? 1 : -1)).map((t) => el("tr", {}, [el("td", { className: "num", textContent: dfmt(t.date) }), el("td", {}, [el("div", { className: "desc", textContent: t.description }), el("div", { className: "small muted", textContent: [t.account, t.reference].filter(Boolean).join(" · ") })]), el("td", { textContent: t.spentBy }), el("td", { className: "n num", textContent: money(sign * t.amount) })]));
+    setDrawer(title, "Actuals", dfmt(c.pay.date) + " to " + dfmt(c.end) + " · " + items.length + " transactions", [{ label: "Date" }, { label: "Where / who" }, { label: "By" }, { label: "Amount", n: 1 }], rows,
+      () => ["actuals-" + title.toLowerCase().replace(/[^a-z0-9]+/g, "-"), ["Date", "Account", "Description", "Reference", "Amount"], items.map((t) => [t.date, t.account, t.description, t.reference, (sign * t.amount).toFixed(2)])], false);
+  }
+  function renderActual() {
+    const c = pcContext(); if (!c) return; const f = fcGet(c), body = $("acBody"); body.replaceChildren();
+    const inPer = (t) => t.date >= c.pay.date && t.date <= c.end, today = todayISO();
+    const moneyIn = tx.filter((t) => inPer(t) && !t.internal && t.amount > 0 && !eff(t).id), inTot = r2(moneyIn.reduce((s, t) => s + t.amount, 0));
+    $("acIn").textContent = money(inTot, 0); $("acInSub").textContent = "Forecast " + money(f.income, 0) + " · " + moneyIn.length + " credits";
+    $("acNote").textContent = "From " + longDate(c.pay.date) + " to " + longDate(c.end) + (c.pay.date > today ? ". This pay hasn't arrived yet." : c.end >= today ? ". Still in progress: data up to the last refresh." : ".") + " Spending is counted by category, bills by payments confirmed on Match to bills, and savers by transfers into them.";
+    let sec = null, outTot = 0, fcTot = 0;
+    const inBtn = el("button", { type: "button", className: "crumb num", textContent: money(inTot) }); inBtn.addEventListener("click", () => openActual(c, "Money in", moneyIn, 1));
+    body.append(el("tr", { className: "sec" }, [el("td", { colSpan: 5, textContent: "Income", style: "font-weight:600;background:var(--surface)" })]),
+      el("tr", {}, [el("td", { textContent: c.pay.label + "'s pay and other money in" }), el("td", { className: "n num", textContent: money(f.income) }), el("td", { className: "n" }, [inBtn]), (() => { const d = r2(inTot - f.income); return el("td", { className: "n num " + (d >= 0 ? "status-good" : "status-bad"), textContent: (d >= 0 ? "+" : "") + money(d) + (d >= 0 ? " more" : " short") }); })(), el("td")]));
+    for (const l of c.lines) {
+      const fv = fcVal(c, f, l), a = actualFor(c, l); if (!fv && !a.v) continue;
+      if (l.sec !== sec) { sec = l.sec; body.append(el("tr", { className: "sec" }, [el("td", { colSpan: 5, textContent: sec, style: "font-weight:600;background:var(--surface)" })])); }
+      outTot += a.v; fcTot += fv;
+      const left = r2(fv - a.v), pct = fv ? Math.min(100, Math.round(a.v / fv * 100)) : 100;
+      const bar = el("div", { style: "height:6px;border-radius:3px;background:var(--hairline);overflow:hidden" }, [el("div", { style: `height:100%;width:${pct}%;background:${a.v > fv + 0.005 ? "var(--negative)" : "var(--cobalt)"}` })]);
+      const act = a.v ? el("button", { type: "button", className: "crumb num", textContent: money(a.v) }) : el("span", { className: "muted", textContent: "$0.00" }); if (a.v) act.addEventListener("click", () => openActual(c, l.label, a.items, l.sec === "Savers" ? 1 : -1));
+      body.append(el("tr", {}, [el("td", { textContent: l.label }), el("td", { className: "n num", textContent: money(fv) }), el("td", { className: "n" }, [act]), el("td", { className: "n num" + (left < 0 ? " status-bad" : ""), textContent: money(left) }), el("td", {}, [bar])]));
+    }
+    outTot = r2(outTot); fcTot = r2(fcTot);
+    $("acOut").textContent = money(outTot, 0); $("acOutSub").textContent = "Forecast " + money(fcTot, 0);
+    const v = r2(fcTot - outTot); $("acVar").textContent = (v < 0 ? "Over " : "Under ") + money(Math.abs(v), 0); $("acVar").classList.toggle("neg", v < 0); $("acVarSub").textContent = v < 0 ? "Spent more than forecast so far" : "Left of the forecast for this pay";
+  }
+  function setPcMode(mode) {
+    FC.mode = mode; for (const b of document.querySelectorAll("[data-pcmode]")) b.setAttribute("aria-pressed", String(b.dataset.pcmode === mode));
+    for (const b of document.querySelectorAll("[data-pcmode]")) { if (b.dataset.pcmode === mode) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); }
+    $("pcBudget").hidden = mode !== "budget"; $("pcForecast").hidden = mode !== "forecast"; $("pcActual").hidden = mode !== "actual";
+    $("pcIntro").textContent = mode === "budget" ? "What this pay was given on Monthly planning, and the transfers to make when it lands. Lines with nothing typed in yet show the suggested amount (marked “suggested”)." : mode === "forecast" ? "Your adjusted plan for this pay: enter what actually came in and rebalance the lines to $0 left." : "What's actually happened since this pay landed, against the forecast.";
+    if (mode === "forecast") renderForecast(); if (mode === "actual") renderActual();
+  }
+  for (const b of document.querySelectorAll("[data-pcmode]")) b.addEventListener("click", () => setPcMode(b.dataset.pcmode));
+  $("fcIncome").addEventListener("input", () => { const c = pcContext(); if (!c) return; const f = fcGet(c); f.income = Number($("fcIncome").value) || 0; fcSave(c, f); fcTotals(c); });
+  $("fcReset").addEventListener("click", async () => { const c = pcContext(); if (!c || !db || !canWrite) return; const id = fcId(c.m, c.key); delete FC.items[id]; try { await db.doc("forecast/" + id).delete(); $("fcMsg").textContent = "Back to the budget."; } catch (e) { $("fcMsg").textContent = "That wasn't reset. Try again in a moment."; } renderForecast(); });
 
   // ---------- Tabs ----------
   const VIEWS = ["overview", "needs", "transactions", "billmatch", "bills", "income", "savers", "budget", "paycheck", "xmas", "loans"];
@@ -2252,6 +2373,7 @@
     if (db) db.collection("christmas").onSnapshot((snap) => { const keep = {}; for (const id of Object.keys(XM.pending || {})) if (XM.items[id]) keep[id] = XM.items[id]; XM.items = {}; for (const d of snap.docs) XM.items[d.id] = keep[d.id] || dd(d); if (!$("xBody").contains(document.activeElement)) renderXmas(); else xmasTotals(); }, () => {});
     if (db) db.collection("loans").onSnapshot((snap) => { LN.items = {}; for (const d of snap.docs) LN.items[d.id] = dd(d); renderLoans(); if (!$("bdTable").contains(document.activeElement)) renderBudget(); }, () => {});
     if (db) db.collection("billMatches").onSnapshot((snap) => { BM.items = {}; for (const d of snap.docs) BM.items[d.id] = dd(d); renderBillMatch(); if (!$("bdTable").contains(document.activeElement)) renderBudget(); }, () => {});
+    if (db) db.collection("forecast").onSnapshot((snap) => { FC.items = {}; for (const d of snap.docs) FC.items[d.id] = dd(d); if (!$("view-paycheck").hidden && !$("fcBody").contains(document.activeElement) && document.activeElement !== $("fcIncome")) setPcMode(FC.mode); }, () => {});
     if (db) db.collection("budget").onSnapshot((snap) => { for (const d of snap.docs) if (!BUD.dirty[d.id]) BUD.months[d.id] = dd(d).alloc || {}; if (!$("bdTable").contains(document.activeElement)) renderBudget(); }, () => {});
     if (db) db.collection("tags").onSnapshot((snap) => { newTags = {}; for (const d of snap.docs) newTags[d.id] = dd(d); fillTagControls(); renderEverything(); }, () => {});
     renderEverything();
