@@ -468,7 +468,7 @@
     </div>
     <div class="card">
       <div class="monthbar"><div class="field"><label class="label" for="bdMonth">Month</label><input id="bdMonth" type="month"></div>
-        <p class="small muted">Each column is one pay, using take-home from the Income tab. Kaylee's monthly pay goes to savers only; bills and spending come out of Jai's Wednesday pays. Fill in savers first, then bills, then spending; the right-hand column rolls the month up. Faint numbers are suggestions; Fill suggestions copies them into empty boxes.</p></div>
+        <p class="small muted">Each column is one pay, using take-home from the Income tab. Kaylee's monthly pay goes to savers only; bills and spending come out of Jai's Wednesday pays. Each bill is paid from a saver: its amount is put into that saver week by week from Jai's pays, worked out from the due date, so the money is there when the bill comes out. Fill in savers first, then bills, then spending; the right-hand column rolls the month up. Faint numbers are suggestions; Fill suggestions copies them into empty boxes.</p></div>
       <div class="incbar"><button class="btn" type="button" id="bdFill">Fill suggestions</button><button class="btn ghost" type="button" id="bdClear">Clear this month</button><span class="small muted" id="bdMsg"></span></div>
     </div>
     <div class="card">
@@ -1500,7 +1500,27 @@
   };
   const billDueIn = (b, m) => occurrences(b, m + "-01", m + "-31");
   const billMonthAmt = (b, m) => r2(billDueIn(b, m).length * (Number(b.amount) || 0));
-  const billWeekly = (b) => r2((Number(b.amount) || 0) * (FREQ[b.freq] || FREQ.monthly).perYear / 52);
+  // Every bill is saved for weekly from Jai's pays into the saver it's paid from. Each payment is split evenly over the
+  // Wednesdays between the previous due date and this one; for a payment still ahead, only Wednesdays from today count,
+  // and if no Wednesday is left before it's due, the whole amount goes on the next Wednesday (it's late).
+  function allWeds(from, to) { const out = [], d = new Date(from + "T00:00:00"); d.setDate(d.getDate() + ((3 - d.getDay() + 7) % 7)); while (iso(d) <= to) { out.push(iso(d)); d.setDate(d.getDate() + 7); } return out; }
+  function billPlan(b, m) {
+    const amt = Number(b.amount) || 0, today = todayISO(), m1 = m + "-01", mEnd = m + "-31", out = {}, detail = [];
+    if (!amt) return { per: out, detail };
+    const occ = occurrences(b, addDays(m1, -400), addDays(m1, 450));
+    occ.forEach((d, i) => {
+      const p = i > 0 ? occ[i - 1] : null;
+      let W = allWeds(p ? addDays(p, 1) : d >= today ? today : addDays(d, -6), d);
+      if (d >= today) W = W.filter((w) => w >= today);
+      let late = false;
+      if (!W.length) { W = allWeds(d >= today ? today : addDays(d, -6), addDays(d >= today ? today : d, 7)).slice(0, 1); late = true; }
+      // Whole cents each week; the last week takes the rounding so the payment is covered exactly.
+      const each = Math.floor(amt / W.length * 100) / 100, lastAmt = r2(amt - each * (W.length - 1)), inMonth = W.filter((w) => w >= m1 && w <= mEnd);
+      for (const w of inMonth) out["jai_" + w] = r2((out["jai_" + w] || 0) + (w === W[W.length - 1] ? lastAmt : each));
+      if (inMonth.length) detail.push({ due: d, weeks: W.length, each, late });
+    });
+    return { per: out, detail };
+  }
   // Spread an amount evenly over the pays, whole dollars, remainder on the last pay.
   function spread(total, pays) { if (!pays.length || !(total > 0)) return {}; const each = Math.floor(total / pays.length), o = {}; pays.forEach((p, i) => { o[p.key] = i === pays.length - 1 ? r2(total - each * (pays.length - 1)) : each; }); return o; }
   // Saver targets live in saverGoals/<id> as {account, target, by}. The monthly suggestion comes out of Kaylee's pay:
@@ -1560,19 +1580,21 @@
     back.addEventListener("click", (e) => { if (e.target === back) close(); });
     box.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
   }
+  const isSaver = (a) => !!a && balances.some((b) => b.kind === "Saver" && b.account === a);
   function budgetRows(m) {
     const pays = budgetPays(m), last = lastMonthSpend(m), jaiPays = pays.filter((p) => p.jai), kay = pays[0];
     const billRows = Object.entries(bills).map(([id, b]) => ({ id, ...b })).filter((b) => isActive(b) || billDueIn(b, m).length).sort((a, b) => a.name.localeCompare(b.name)).map((b) => {
-      const due = billMonthAmt(b, m), sug = {};
-      if (b.saveWeekly) { for (const p of jaiPays) sug[p.key] = billWeekly(b); }
-      else if (jaiPays.length) for (const d of billDueIn(b, m)) { const p = [...jaiPays].reverse().find((x) => x.key.slice(4) <= d) || jaiPays[0]; sug[p.key] = r2((sug[p.key] || 0) + (Number(b.amount) || 0)); }
-      return { key: "bill_" + b.id, kind: "bill", bill: b, label: b.name, sub: (b.from ? b.from + " · " : "") + (due ? money(due) + " due this month" : "Nothing due this month") + (b.saveWeekly ? " · saving " + money(billWeekly(b)) + "/week" : ""), last: null, sug };
+      const due = billMonthAmt(b, m), plan = billPlan(b, m), sug = plan.per;
+      const how = plan.detail.every((x) => x.weeks === 1 && !x.late) && plan.detail.length ? "set aside the Wednesday before each payment"
+        : plan.detail.slice(0, 2).map((x) => x.late ? "all of " + dfmt(x.due) + "'s payment on the next pay (due before it)" : money(x.each) + "/week × " + x.weeks + " for " + dfmt(x.due)).join("; ") + (plan.detail.length > 2 ? "; …" : "");
+      return { key: "bill_" + b.id, kind: "bill", bill: b, label: b.name, saver: isSaver(b.account) ? b.account : "", sub: (b.from ? b.from + " · " : "") + money(Number(b.amount)) + " " + freqLabel(b).toLowerCase() + (how ? " · " + how : ""), last: null, sug };
     });
     const mapped = {}; for (const r of billRows) if (r.bill.category) mapped[r.bill.category] = r2((mapped[r.bill.category] || 0) + billMonthAmt(r.bill, m));
     const groups = cats.map((p) => ({ name: p.name, rows: p.children.map((c) => { const lm = last["cat_" + c.id] || 0, sugAmt = Math.max(0, Math.round(lm - (mapped[c.id] || 0))); return { key: "cat_" + c.id, kind: "cat", label: c.name, sub: mapped[c.id] ? "Includes bills mapped here" : "", last: lm, sug: spread(sugAmt, jaiPays) }; }) }));
     groups.push({ name: "Other", rows: [["other_transfers", "Transfers to people"], ["other_uncat", "Uncategorised"]].map(([k, l]) => ({ key: k, kind: "cat", label: l, sub: "", last: last[k] || 0, sug: spread(Math.max(0, Math.round(last[k] || 0)), jaiPays) })) });
-    const saverRows = balances.filter((b) => b.kind === "Saver").map((b) => { const g = saverPlan(b.account, m); return { key: "saver_" + b.account, kind: "saver", label: b.account, account: b.account, plan: g,
-      sub: "Balance " + money(Number(b.balance) || 0) + (g ? " · target " + money(g.target, 0) + " by " + dfmt(g.by) + " · " + (g.need > 0 ? money(g.perMonth, 0) + "/month" : "reached") : " · no target yet"), last: null, sug: g && g.perMonth > 0 ? { kaylee: g.perMonth } : {} }; });
+    const saverRows = balances.filter((b) => b.kind === "Saver").map((b) => { const g = saverPlan(b.account, m), billsHere = billRows.filter((r) => r.saver === b.account);
+      return { key: "saver_" + b.account, kind: "saver", label: b.account, account: b.account, plan: g, billKeys: billsHere.map((r) => r.key),
+      sub: "Balance " + money(Number(b.balance) || 0) + (g ? " · target " + money(g.target, 0) + " by " + dfmt(g.by) + " · " + (g.need > 0 ? money(g.perMonth, 0) + "/month" : "reached") : billsHere.length ? "" : " · no target yet") + (billsHere.length ? " · pays " + billsHere.length + " bill" + (billsHere.length > 1 ? "s" : "") + " (" + billsHere.map((r) => r.label).join(", ") + "), " + money(r2(billsHere.reduce((s, r) => s + Object.values(r.sug).reduce((a, v) => a + v, 0), 0))) + " going in for them this month from the Bills lines" : ""), last: null, sug: g && g.perMonth > 0 ? { kaylee: g.perMonth } : {} }; });
     return { pays, billRows, groups, saverRows, last };
   }
   const catOptions = () => [el("option", { value: "", textContent: "No category" }), ...cats.map((p) => { const g = el("optgroup", { label: p.name }); g.append(...p.children.map((c) => el("option", { value: c.id, textContent: c.name }))); return g; })];
@@ -1601,8 +1623,10 @@
       if (row.kind === "bill") {
         const sel = el("select", {}, catOptions()); sel.value = row.bill.category || ""; sel.setAttribute("aria-label", "Category for " + row.label); sel.disabled = !canWrite;
         sel.addEventListener("change", () => saveBillOpt(row.bill.id, { category: sel.value || null }));
-        const wk = el("input", { type: "checkbox", checked: !!row.bill.saveWeekly }); wk.disabled = !canWrite; wk.addEventListener("change", () => saveBillOpt(row.bill.id, { saveWeekly: wk.checked }));
-        first.append(el("div", { className: "billopts" }, [el("label", {}, ["Category ", sel]), el("label", {}, [wk, " Save weekly from Jai's pays"])]));
+        const sv = el("select", {}, [el("option", { value: "", textContent: "Choose a saver" }), ...balances.filter((b) => b.kind === "Saver").map((b) => el("option", { value: b.account, textContent: b.account }))]); sv.value = row.saver; sv.disabled = !canWrite; sv.setAttribute("aria-label", "Saver that pays " + row.label);
+        if (!row.saver) sv.style.borderColor = "var(--coral)";
+        sv.addEventListener("change", () => { if (sv.value) saveBillOpt(row.bill.id, { account: sv.value }); });
+        first.append(el("div", { className: "billopts" }, [el("label", {}, ["Paid from ", sv]), el("label", {}, ["Category ", sel])]));
       }
       return el("tr", {}, [first, row.last === null ? el("td") : lastLink(m, row.last, row.label, "Spent last month", [row.key]), ...cellInput(row), tot]); };
     const section = (key, title, rows) => { const cells = R.pays.map((p) => { const td = el("td", { className: "n num" }); (bdRefs.secTot[key] = bdRefs.secTot[key] || {})[p.key] = td; return td; }); const tot = el("td", { className: "n num" }); bdRefs.secTot[key]._ = tot; const lastTot = rows.reduce((s, r) => s + (r.last || 0), 0);
