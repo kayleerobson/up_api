@@ -224,6 +224,9 @@
   .xm .w-type { width: 8.5rem; } .xm .w-who { width: 9rem; } .xm .w-amt { width: 7rem; } .xm .w-st { width: 7.5rem; } .xm .w-x { width: 4rem; }
   .xm { min-width: 58rem; }
   .xm tr.done td { background: var(--surface); }
+  .loanpick { display: flex; flex-wrap: wrap; gap: 6px; }
+  .loanpick .chip { background: var(--raised); border-color: var(--hairline); color: var(--ink); font-weight: 500; }
+  .loanpick .chip[aria-pressed="true"] { background: var(--cobalt); border-color: var(--cobalt); color: var(--raised); }
   .check { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: var(--ink); cursor: pointer; margin-top: 12px; }
   .check input { width: 16px; height: 16px; margin: 0; accent-color: var(--cobalt); }
   .sumtable td, .sumtable th { padding: 6px 8px; }
@@ -261,6 +264,7 @@
       <button class="navitem sub" id="tab-income" data-view="income" type="button">Income</button>
       <button class="navitem sub" id="tab-budget" data-view="budget" type="button">Budget</button>
       <button class="navitem sub" id="tab-xmas" data-view="xmas" type="button">Christmas</button>
+      <button class="navitem sub" id="tab-loans" data-view="loans" type="button">Loans</button>
       <p class="navsoon">More coming soon</p>
     </div>
   </nav>
@@ -501,6 +505,41 @@
     <div class="grid2">
       <div class="card"><div class="card-head"><div><h3>By type</h3></div></div><div class="tablebox"><table><thead><tr><th>Type</th><th class="n">Items</th><th class="n">Budget</th><th class="n">Spent</th><th class="n">Left</th></tr></thead><tbody id="xByType"></tbody></table></div></div>
       <div class="card"><div class="card-head"><div><h3>Gifts by person</h3></div></div><div class="tablebox"><table><thead><tr><th>For</th><th class="n">Gifts</th><th class="n">Budget</th><th class="n">Spent</th><th class="n">Bought</th></tr></thead><tbody id="xByWho"></tbody></table></div></div>
+    </div>
+  </section>
+
+  <section id="view-loans" aria-labelledby="pageTitle" class="stack" hidden>
+    <div class="card">
+      <div class="card-head"><div><h2>Your loans</h2><p class="note">Add each loan with today's balance, interest rate and repayment. The projection works out when it's paid off and how much interest you'll pay, and what extra repayments save. It's an estimate: interest is charged each repayment at the yearly rate divided by the number of repayments a year, with no fees and the rate staying the same. Changes show straight away; press Save loan to keep them.</p></div></div>
+      <div class="loanpick" id="lPick" role="group" aria-label="Loans"></div>
+      <div class="billform" style="margin-top:12px">
+        <div class="field"><label class="label" for="lName">Loan</label><input id="lName" type="text" maxlength="60" placeholder="e.g. Mortgage"></div>
+        <div class="field"><label class="label" for="lBal">Balance today $</label><input id="lBal" type="number" min="0" step="0.01" inputmode="decimal"></div>
+        <div class="field"><label class="label" for="lRate">Interest rate % a year</label><input id="lRate" type="number" min="0" step="0.01" inputmode="decimal"></div>
+        <div class="field"><label class="label" for="lFreq">Repayments</label><select id="lFreq"><option value="52">Weekly</option><option value="26">Fortnightly</option><option value="12" selected>Monthly</option></select></div>
+        <div class="field"><label class="label" for="lPay">Repayment $</label><input id="lPay" type="number" min="0" step="0.01" inputmode="decimal"></div>
+        <div class="field"><label class="label" for="lExtra">Extra each repayment $</label><input id="lExtra" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0"></div>
+        <div class="field"><label class="label" for="lLump">One-off lump sum $</label><input id="lLump" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0"></div>
+        <div class="field"><label class="label" for="lNext">Next repayment</label><input id="lNext" type="date"></div>
+        <div class="actions"><button class="btn" id="lSave" type="button">Save loan</button><button class="btn ghost" id="lNew" type="button">New loan</button><button class="btn ghost" id="lDel" type="button" hidden>Delete</button></div>
+      </div>
+      <p class="small" id="lMsg" hidden></p>
+    </div>
+    <div class="tiles" aria-label="Loan projection">
+      <div class="tile"><p class="label">Paid off</p><span class="stat" id="lOff">—</span><p class="small muted" id="lOffSub">—</p></div>
+      <div class="tile"><p class="label">Interest still to pay</p><span class="stat" id="lInt">—</span><p class="small muted" id="lIntSub">—</p></div>
+      <div class="tile"><p class="label">Extra repayments save</p><span class="stat" id="lSave2">—</span><p class="small muted" id="lSaveSub">—</p></div>
+      <div class="tile"><p class="label">Total still to repay</p><span class="stat" id="lTot">—</span><p class="small muted" id="lTotSub">—</p></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div><h3>Balance over time</h3><p class="note">With your extra repayments (cobalt) and with the minimum only (coral).</p></div></div>
+      <div class="chart" id="lChart"></div>
+    </div>
+    <div class="grid2">
+      <div class="card"><div class="card-head"><div><h3>Pay it off by a date</h3><p class="note">The repayment needed to finish by the date you pick, at the same rate and frequency.</p></div></div>
+        <div class="monthbar"><div class="field"><label class="label" for="lBy">Paid off by</label><input id="lBy" type="date"></div><p class="small" id="lByOut" style="font-size:15px"></p></div></div>
+      <div class="card"><div class="card-head"><div><h3>Year by year</h3></div><button class="btn ghost csv" type="button" data-csv="loan">Download CSV</button></div>
+        <div class="tablebox short"><table><thead><tr><th>Year</th><th class="n">Repaid</th><th class="n">Interest</th><th class="n">Principal</th><th class="n">Balance at end</th></tr></thead><tbody id="lYears"></tbody></table></div></div>
     </div>
   </section>
 
@@ -792,7 +831,7 @@
     if (lo < 0) svg.append(svgEl("line", { x1: left, x2: W - right, y1: y(0), y2: y(0), stroke: C.muted }));
     // x labels: about one per 90px
     const step = Math.max(1, Math.ceil(xs.length / Math.max(2, Math.floor((W - left) / 90))));
-    xs.forEach((d, i) => { if (i % step) return; const t = svgEl("text", { x: x(i), y: H - 8, "text-anchor": i === 0 ? "start" : "middle" }); t.textContent = new Date(d + "T00:00:00").toLocaleDateString("en-AU", { day: "numeric", month: "short" }); svg.append(t); });
+    xs.forEach((d, i) => { if (i % step) return; const t = svgEl("text", { x: x(i), y: H - 8, "text-anchor": i === 0 ? "start" : "middle" }); t.textContent = opts.xfmt ? opts.xfmt(d) : new Date(d + "T00:00:00").toLocaleDateString("en-AU", { day: "numeric", month: "short" }); svg.append(t); });
     for (const s of series) {
       const d = s.values.map((v, i) => (i ? "L" : "M") + x(i).toFixed(1) + "," + y(v).toFixed(1)).join("");
       if (opts.area) { const gid = "g" + Math.random().toString(36).slice(2); const defs = svgEl("defs"); const lg = svgEl("linearGradient", { id: gid, x1: 0, y1: 0, x2: 0, y2: 1 });
@@ -1813,8 +1852,95 @@
   });
   csvBuilders.xmas = () => ["christmas-" + xYear(), ["Type", "For", "Item", "Budget", "Spent", "Status"], xList().map((x) => [x.type || "Gift", x.who || "", x.item || "", x.budget ?? "", x.actual ?? "", x.status || "Idea"])];
 
+  // ---------- Loans ----------
+  // loans/<id>: {name, balance, rate (% a year), perYear (52|26|12), payment, extra, lump, next (YYYY-MM-DD)}.
+  const LN = { items: {}, sel: null };
+  const lv = (id) => { const v = parseFloat($(id).value); return isFinite(v) ? v : 0; };
+  const nextPayDate = (d, perYear) => perYear === 12 ? addMonths(d, 1) : addDays(d, perYear === 26 ? 14 : 7);
+  // Steps through every repayment: interest for the period is added, then the repayment (and any extra) comes off.
+  function amortise(L, withExtra) {
+    const r = (Number(L.rate) || 0) / 100 / L.perYear, pay = (Number(L.payment) || 0) + (withExtra ? Number(L.extra) || 0 : 0);
+    let bal = (Number(L.balance) || 0) - (withExtra ? Number(L.lump) || 0 : 0), d = L.next || todayISO(), interest = 0, paid = withExtra ? Math.min(Number(L.lump) || 0, Number(L.balance) || 0) : 0;
+    const rows = [], monthEnds = {}; if (bal <= 0) return { ok: true, n: 0, end: todayISO(), interest: 0, paid, rows, monthEnds };
+    for (let n = 1; n <= 52 * 60; n++) {
+      const i = bal * r; if (pay <= i) return { ok: false, interest: Infinity, rows, monthEnds, why: "The repayment doesn't cover the interest, so the balance never goes down." };
+      const p = Math.min(pay, bal + i); bal = r2(bal + i - p); interest += i; paid += p;
+      rows.push({ d, interest: i, paid: p, bal }); monthEnds[d.slice(0, 7)] = bal;
+      if (bal <= 0.005) return { ok: true, n, end: d, interest: r2(interest), paid: r2(paid), rows, monthEnds };
+      d = nextPayDate(d, L.perYear);
+    }
+    return { ok: false, interest: Infinity, rows, monthEnds, why: "This loan would take more than 60 years to repay." };
+  }
+  const yrsMonths = (from, to) => { const m = Math.max(0, monthsBetween(from.slice(0, 7), to.slice(0, 7))); return (m >= 12 ? Math.floor(m / 12) + (Math.floor(m / 12) === 1 ? " year" : " years") : "") + (m % 12 ? (m >= 12 ? " " : "") + (m % 12) + (m % 12 === 1 ? " month" : " months") : m < 12 ? "under a month" : ""); };
+  function loanFromForm() { return { name: $("lName").value.trim(), balance: lv("lBal"), rate: lv("lRate"), perYear: Number($("lFreq").value), payment: lv("lPay"), extra: lv("lExtra"), lump: lv("lLump"), next: $("lNext").value || todayISO() }; }
+  function fillLoanForm(L) { $("lName").value = L.name || ""; $("lBal").value = L.balance ?? ""; $("lRate").value = L.rate ?? ""; $("lFreq").value = String(L.perYear || 12); $("lPay").value = L.payment ?? ""; $("lExtra").value = L.extra || ""; $("lLump").value = L.lump || ""; $("lNext").value = L.next || ""; $("lDel").hidden = !LN.sel; }
+  function renderLoans() {
+    if ($("view-loans").hidden) return;
+    const ids = Object.keys(LN.items).sort((a, b) => (LN.items[a].name || "").localeCompare(LN.items[b].name || ""));
+    if (LN.sel && !LN.items[LN.sel]) LN.sel = null;
+    if (!LN.sel && ids.length && !LN.editingNew) { LN.sel = ids[0]; fillLoanForm(LN.items[LN.sel]); }
+    const chip = (id, label) => { const b = el("button", { type: "button", className: "chip", textContent: label }); b.setAttribute("aria-pressed", String(LN.sel === id)); b.addEventListener("click", () => { LN.sel = id; LN.editingNew = !id; fillLoanForm(id ? LN.items[id] : { perYear: 12 }); loanMsg(""); renderLoans(); }); return b; };
+    $("lPick").replaceChildren(...ids.map((id) => chip(id, LN.items[id].name || "Loan")), ...(LN.sel ? [] : [chip(null, "New loan")]));
+    $("lSave").disabled = !canWrite; $("lDel").disabled = !canWrite;
+    loanProject();
+  }
+  function loanProject() {
+    const L = loanFromForm(), set = (id, v) => { $(id).textContent = v; };
+    $("lChart").replaceChildren(); $("lYears").replaceChildren(); $("lByOut").textContent = "";
+    if (!(L.balance > 0) || !(L.payment > 0)) { for (const id of ["lOff", "lInt", "lSave2", "lTot"]) set(id, "—"); set("lOffSub", "Enter a balance and repayment to see the projection."); for (const id of ["lIntSub", "lSaveSub", "lTotSub"]) set(id, ""); return; }
+    const base = amortise(L, false), ext = amortise(L, true), hasExtra = L.extra > 0 || L.lump > 0, main = hasExtra ? ext : base;
+    if (!main.ok) { set("lOff", "Never"); set("lOffSub", main.why); for (const id of ["lInt", "lSave2", "lTot"]) set(id, "—"); for (const id of ["lIntSub", "lSaveSub", "lTotSub"]) set(id, ""); return; }
+    set("lOff", new Date(main.end + "T00:00:00").toLocaleDateString("en-AU", { month: "short", year: "numeric" })); set("lOffSub", "In " + yrsMonths(todayISO(), main.end) + " · " + main.n + " repayments");
+    set("lInt", money(main.interest, 0)); set("lIntSub", "At " + L.rate + "% a year");
+    if (hasExtra && base.ok) { set("lSave2", money(r2(base.interest - ext.interest), 0)); set("lSaveSub", "Paid off " + yrsMonths(ext.end, base.end) + " sooner than the minimum (" + new Date(base.end + "T00:00:00").toLocaleDateString("en-AU", { month: "short", year: "numeric" }) + ")"); }
+    else if (hasExtra) { set("lSave2", "All of it"); set("lSaveSub", "The minimum alone never pays it off"); }
+    else { set("lSave2", "—"); set("lSaveSub", "Add an extra repayment or lump sum to compare"); }
+    set("lTot", money(main.paid, 0)); set("lTotSub", money(L.balance, 0) + " balance + " + money(main.interest, 0) + " interest");
+    // Chart: balance at the end of each month (or each year for long loans).
+    const lastM = (base.ok ? base.end : main.end).slice(0, 7), months = []; for (let m = todayISO().slice(0, 7); m <= lastM; m = addMonths(m + "-01", 1).slice(0, 7)) months.push(m);
+    const stepM = months.length > 120 ? 12 : months.length > 48 ? 3 : 1, picked = months.filter((_, i) => i % stepM === 0 || i === months.length - 1);
+    const at = (res, m) => { let v = Number(L.balance) || 0; for (const k of Object.keys(res.monthEnds)) if (k <= m) v = res.monthEnds[k]; return k0(res, m, v); };
+    function k0(res, m, v) { return res.ok && m > res.end.slice(0, 7) ? 0 : v; }
+    const series = [{ name: hasExtra ? "With extra" : "Balance", color: C.cobalt, values: picked.map((m) => at(main, m)) }];
+    if (hasExtra && base.ok) series.push({ name: "Minimum only", color: C.coral, values: picked.map((m) => at(base, m)) });
+    drawLines($("lChart"), picked.map((m) => m + "-01"), series, { area: !hasExtra, label: "Loan balance over time", tipHead: (d) => monthName(d.slice(0, 7)), xfmt: (d) => new Date(d + "T00:00:00").toLocaleDateString("en-AU", { month: "short", year: "2-digit" }) });
+    // Year by year.
+    const yrs = {}; for (const x of main.rows) { const y = x.d.slice(0, 4); const o = (yrs[y] = yrs[y] || { paid: 0, interest: 0, bal: 0 }); o.paid += x.paid; o.interest += x.interest; o.bal = x.bal; }
+    LN.years = Object.entries(yrs).map(([y, o]) => ({ y, paid: r2(o.paid), interest: r2(o.interest), principal: r2(o.paid - o.interest), bal: o.bal }));
+    $("lYears").replaceChildren(...LN.years.map((o) => el("tr", {}, [el("td", { className: "num", textContent: o.y }), el("td", { className: "n num", textContent: money(o.paid) }), el("td", { className: "n num", textContent: money(o.interest) }), el("td", { className: "n num", textContent: money(o.principal) }), el("td", { className: "n num", textContent: money(o.bal) })])));
+    loanBy();
+  }
+  // Repayment needed to clear the balance by a date: the standard annuity formula over the repayments left.
+  function loanBy() {
+    const L = loanFromForm(), by = $("lBy").value, out = $("lByOut"); out.textContent = ""; if (!by || !(L.balance > 0)) return;
+    let n = 0; for (let d = L.next; d <= by && n < 52 * 60; d = nextPayDate(d, L.perYear)) n++;
+    if (!n) { out.textContent = "Pick a date after the next repayment."; return; }
+    const r = L.rate / 100 / L.perYear, bal = L.balance - (L.lump || 0), pay = r ? bal * r / (1 - Math.pow(1 + r, -n)) : bal / n;
+    const per = { 52: "week", 26: "fortnight", 12: "month" }[L.perYear], diff = r2(pay - L.payment - (L.extra || 0));
+    out.replaceChildren(el("strong", { className: "num", textContent: money(Math.ceil(pay * 100) / 100) + " a " + per }), " over " + n + " repayments" + (diff > 0 ? " · " + money(diff) + " more than you pay now" : diff < 0 ? " · you're already ahead of this" : ""));
+  }
+  function loanMsg(t, bad) { const m = $("lMsg"); m.textContent = t; m.className = "small " + (bad ? "status-bad" : "muted"); m.hidden = !t; }
+  for (const id of ["lName", "lBal", "lRate", "lFreq", "lPay", "lExtra", "lLump", "lNext"]) $(id).addEventListener("input", loanProject);
+  $("lBy").addEventListener("input", loanBy);
+  $("lNew").addEventListener("click", () => { LN.sel = null; LN.editingNew = true; fillLoanForm({ perYear: 12 }); loanMsg(""); renderLoans(); $("lName").focus(); });
+  $("lSave").addEventListener("click", async () => {
+    if (!db || !canWrite) { loanMsg("Only editors can save loans.", true); return; }
+    const L = loanFromForm(); if (!L.name) { loanMsg("Give the loan a name.", true); $("lName").focus(); return; }
+    if (!(L.balance > 0)) { loanMsg("Enter the balance today.", true); $("lBal").focus(); return; }
+    const data = { ...L, updatedAt: new Date().toISOString() }; $("lSave").disabled = true;
+    try { if (LN.sel) await db.doc("loans/" + LN.sel).set(data); else { const id = "l-" + Date.now().toString(36); await db.doc("loans/" + id).set(data); LN.sel = id; LN.items[id] = data; } LN.editingNew = false; loanMsg("Saved " + L.name + ".", false); renderLoans(); }
+    catch (e) { loanMsg("The loan wasn't saved. Try again in a moment.", true); } finally { $("lSave").disabled = !canWrite; }
+  });
+  $("lDel").addEventListener("click", async () => {
+    const b = $("lDel"); if (!LN.sel) return;
+    if (b.dataset.confirm !== "1") { b.dataset.confirm = "1"; b.textContent = "Confirm delete"; setTimeout(() => { b.dataset.confirm = ""; b.textContent = "Delete"; }, 4000); return; }
+    b.dataset.confirm = ""; b.textContent = "Delete";
+    try { await db.doc("loans/" + LN.sel).delete(); delete LN.items[LN.sel]; LN.sel = null; LN.editingNew = false; fillLoanForm({ perYear: 12 }); loanMsg("Deleted.", false); renderLoans(); } catch (e) { loanMsg("The loan wasn't deleted. Try again in a moment.", true); }
+  });
+  csvBuilders.loan = () => ["loan-" + ($("lName").value || "projection").toLowerCase().replace(/[^a-z0-9]+/g, "-"), ["Year", "Repaid", "Interest", "Principal", "Balance at end"], (LN.years || []).map((o) => [o.y, o.paid.toFixed(2), o.interest.toFixed(2), o.principal.toFixed(2), o.bal.toFixed(2)])];
+
   // ---------- Tabs ----------
-  const VIEWS = ["overview", "needs", "transactions", "bills", "income", "budget", "xmas"];
+  const VIEWS = ["overview", "needs", "transactions", "bills", "income", "budget", "xmas", "loans"];
   function show(v) {
     if (!VIEWS.includes(v)) v = "overview";
     for (const x of VIEWS) { if (x === v) $("tab-" + x).setAttribute("aria-current", "page"); else $("tab-" + x).removeAttribute("aria-current"); $("view-" + x).hidden = x !== v; }
@@ -1822,7 +1948,7 @@
     $("pageTitle").textContent = $("tab-" + v).firstChild.textContent.trim();
     if (narrow()) setSide(false);
     if (location.hash.slice(1) !== v) history.replaceState(null, "", "#" + v);
-    if (v === "overview") renderOverview(); else if (v === "needs") renderNeeds(); else if (v === "bills") { fillBillAccounts(); renderBills(); } else if (v === "income") renderIncome(); else if (v === "budget") renderBudget(); else if (v === "xmas") renderXmas(); else renderAll();
+    if (v === "overview") renderOverview(); else if (v === "needs") renderNeeds(); else if (v === "bills") { fillBillAccounts(); renderBills(); } else if (v === "income") renderIncome(); else if (v === "budget") renderBudget(); else if (v === "xmas") renderXmas(); else if (v === "loans") renderLoans(); else renderAll();
   }
   for (const b of document.querySelectorAll(".navitem")) b.addEventListener("click", () => show(b.dataset.view));
   // Menu groups open and close on click; the group holding the current page opens itself.
@@ -1896,6 +2022,7 @@
     if (db) db.collection("bills").onSnapshot((snap) => { bills = {}; for (const d of snap.docs) bills[d.id] = dd(d); renderBills(); renderBudget(); }, () => {});
     if (db) db.collection("saverGoals").onSnapshot((snap) => { for (const k of Object.keys(SAVERS)) delete SAVERS[k]; for (const d of snap.docs) SAVERS[d.id] = dd(d); if (!$("bdTable").contains(document.activeElement)) renderBudget(); }, () => {});
     if (db) db.collection("christmas").onSnapshot((snap) => { const keep = {}; for (const id of Object.keys(XM.pending || {})) if (XM.items[id]) keep[id] = XM.items[id]; XM.items = {}; for (const d of snap.docs) XM.items[d.id] = keep[d.id] || dd(d); if (!$("xBody").contains(document.activeElement)) renderXmas(); else xmasTotals(); }, () => {});
+    if (db) db.collection("loans").onSnapshot((snap) => { LN.items = {}; for (const d of snap.docs) LN.items[d.id] = dd(d); renderLoans(); }, () => {});
     if (db) db.collection("budget").onSnapshot((snap) => { for (const d of snap.docs) if (!BUD.dirty[d.id]) BUD.months[d.id] = dd(d).alloc || {}; if (!$("bdTable").contains(document.activeElement)) renderBudget(); }, () => {});
     if (db) db.collection("tags").onSnapshot((snap) => { newTags = {}; for (const d of snap.docs) newTags[d.id] = dd(d); fillTagControls(); renderEverything(); }, () => {});
     renderEverything();
