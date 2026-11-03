@@ -188,6 +188,26 @@
   .helpfix { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: var(--ink); margin-top: 12px; }
   .helpfix input { width: 8rem; height: 32px; box-sizing: border-box; font: inherit; font-size: 13px; color: var(--ink); background: var(--raised); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 4px 6px; }
   .helprow[data-off] .helpfix { display: none; }
+  .bud { min-width: 46rem; }
+  .bud td { vertical-align: middle; }
+  .bud th.pay { min-width: 5.5rem; }
+  .bud th .sub, .bud td .sub { display: block; font-weight: 400; color: var(--muted); font-size: 12px; line-height: 16px; }
+  .bud input.bc { width: 5.25rem; height: 30px; box-sizing: border-box; font: inherit; font-size: 13px; text-align: right; color: var(--ink); background: var(--raised); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 4px 6px; }
+  .bud input.bc::placeholder { color: var(--muted); opacity: .6; }
+  .bud tr.sec td { background: var(--surface); font-weight: 600; border-top: 1px solid var(--ink); }
+  .bud tr.grp td { font-weight: 600; }
+  .bud tr.grp button { font: inherit; background: none; border: 0; padding: 0; cursor: pointer; color: var(--ink); display: inline-flex; gap: 6px; align-items: center; }
+  .bud tr.foot td { font-weight: 600; background: var(--cobalt-tint); }
+  .bud td.ind { padding-left: 24px; }
+  .bud .billopts label { display: inline-flex; gap: 6px; align-items: center; }
+  .bud .billopts { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; margin-top: 4px; font-size: 12px; color: var(--muted); }
+  .bud .billopts select { font: inherit; font-size: 12px; line-height: 16px; height: 28px; padding: 2px 4px; max-width: 12rem; border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--raised); color: var(--ink); }
+  .bud .billopts input[type="checkbox"] { width: 14px; height: 14px; margin: 0; accent-color: var(--cobalt); }
+  .bud .neg { color: var(--negative); }
+  .bud .stick { position: sticky; left: 0; background: var(--raised); z-index: 1; min-width: 17rem; }
+  @media (max-width: 640px) { .bud .stick { min-width: 11rem; } }
+  .stat.neg { color: var(--negative); }
+  .bud tr.sec .stick { background: var(--surface); } .bud tr.foot .stick { background: var(--cobalt-tint); }
   .check { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: var(--ink); cursor: pointer; margin-top: 12px; }
   .check input { width: 16px; height: 16px; margin: 0; accent-color: var(--cobalt); }
   .sumtable td, .sumtable th { padding: 6px 8px; }
@@ -223,6 +243,7 @@
     <div class="navsub" id="grp-budget" hidden>
       <button class="navitem sub" id="tab-bills" data-view="bills" type="button">Bills</button>
       <button class="navitem sub" id="tab-income" data-view="income" type="button">Income</button>
+      <button class="navitem sub" id="tab-budget" data-view="budget" type="button">Budget</button>
       <p class="navsoon">More coming soon</p>
     </div>
   </nav>
@@ -428,6 +449,23 @@
         <div class="incbar"><button class="btn ghost" type="button" data-add="kaylee">Add line</button><button class="btn" type="button" data-calc="kaylee">Calculate</button><span class="small muted" id="iKayMsg"></span></div>
         <div id="iKayOut"></div>
       </div>
+    </div>
+  </section>
+
+  <section id="view-budget" aria-labelledby="pageTitle" class="stack" hidden>
+    <div class="tiles" aria-label="Budget totals">
+      <div class="tile"><p class="label">Take-home this month</p><span class="stat" id="bdIn">—</span><p class="small muted" id="bdInSub">From the Income tab</p></div>
+      <div class="tile"><p class="label">Allocated</p><span class="stat" id="bdAlloc">—</span><p class="small muted" id="bdAllocSub">Bills, spending and savers</p></div>
+      <div class="tile"><p class="label">Left to allocate</p><span class="stat" id="bdLeft">—</span><p class="small muted">Take-home minus allocated</p></div>
+      <div class="tile"><p class="label">Spent last month</p><span class="stat" id="bdLast">—</span><p class="small muted" id="bdLastSub">—</p></div>
+    </div>
+    <div class="card">
+      <div class="monthbar"><div class="field"><label class="label" for="bdMonth">Month</label><input id="bdMonth" type="month"></div>
+        <p class="small muted">Each column is one pay: Kaylee's monthly pay and each of Jai's Wednesdays, using take-home from the Income tab. Type how much of each pay goes to each line; the right-hand column rolls the month up. Faint numbers are suggestions; Fill suggestions copies them into empty boxes.</p></div>
+      <div class="incbar"><button class="btn" type="button" id="bdFill">Fill suggestions</button><button class="btn ghost" type="button" id="bdClear">Clear this month</button><span class="small muted" id="bdMsg"></span></div>
+    </div>
+    <div class="card">
+      <div class="tablebox" style="max-height:none"><table class="bud" id="bdTable"></table></div>
     </div>
   </section>
 
@@ -1390,8 +1428,140 @@
   for (const b of document.querySelectorAll("[data-calc]")) b.addEventListener("click", () => calcIncome(b.dataset.calc));
   $("iMonth").addEventListener("change", () => { drawWeeks(); drawPayLines("jai"); drawOut("jai"); renderIncomeTiles(); });
 
+  // ---------- Budget ----------
+  // Rows are bills, spending categories and savers; columns are the pays in the month. Allocations live in budget/<YYYY-MM> as {alloc: {rowKey: {payKey: amount}}}.
+  const BUD = { months: {}, dirty: {}, timer: null, open: {} };
+  const bdMonth = () => $("bdMonth").value || NOW_MONTH;
+  const prevMonth = (m) => addMonths(m + "-01", -1).slice(0, 7);
+  function budgetPays(m) {
+    const out = [{ key: "kaylee", label: "Kaylee", sub: "Monthly pay", net: payFor("kaylee").net }];
+    for (const d of wednesdays(m)) out.push({ key: "jai_" + d, label: "Jai", sub: wdfmt(d), net: payFor("jai", itemsFor("jai", d)).net, jai: true });
+    return out;
+  }
+  const allocOf = (m) => (BUD.months[m] = BUD.months[m] || {});
+  const cellVal = (m, row, pay) => { const r = allocOf(m)[row]; const v = r ? r[pay] : undefined; return v === undefined || v === null || v === "" ? null : Number(v); };
+  // Net spending last month per Up subcategory, plus transfers to people and uncategorised spending.
+  function lastMonthSpend(m) {
+    const pm = prevMonth(m), out = {};
+    for (const t of tx) {
+      if (t.month !== pm || t.internal) continue;
+      const k = classify(t);
+      let key = null;
+      const e = eff(t);
+      if (e.id) key = "cat_" + e.id; else if (t.amount < 0 && k.category === "Transfers") key = "other_transfers"; else if (t.amount < 0) key = "other_uncat";
+      if (key) out[key] = r2((out[key] || 0) - t.amount);
+    }
+    return out;
+  }
+  const billDueIn = (b, m) => occurrences(b, m + "-01", m + "-31");
+  const billMonthAmt = (b, m) => r2(billDueIn(b, m).length * (Number(b.amount) || 0));
+  const billWeekly = (b) => r2((Number(b.amount) || 0) * (FREQ[b.freq] || FREQ.monthly).perYear / 52);
+  // Spread an amount evenly over the pays, whole dollars, remainder on the last pay.
+  function spread(total, pays) { if (!pays.length || !(total > 0)) return {}; const each = Math.floor(total / pays.length), o = {}; pays.forEach((p, i) => { o[p.key] = i === pays.length - 1 ? r2(total - each * (pays.length - 1)) : each; }); return o; }
+  function budgetRows(m) {
+    const pays = budgetPays(m), last = lastMonthSpend(m), jaiPays = pays.filter((p) => p.jai), kay = pays[0];
+    const billRows = Object.entries(bills).map(([id, b]) => ({ id, ...b })).filter((b) => isActive(b) || billDueIn(b, m).length).sort((a, b) => a.name.localeCompare(b.name)).map((b) => {
+      const due = billMonthAmt(b, m), sug = {};
+      if (b.saveWeekly) { for (const p of jaiPays) sug[p.key] = billWeekly(b); }
+      else if (due) { const p = kay.net > 0 || !jaiPays.length ? kay : jaiPays[0]; sug[p.key] = due; }
+      return { key: "bill_" + b.id, kind: "bill", bill: b, label: b.name, sub: (b.from ? b.from + " · " : "") + (due ? money(due) + " due this month" : "Nothing due this month") + (b.saveWeekly ? " · saving " + money(billWeekly(b)) + "/week" : ""), last: null, sug };
+    });
+    const mapped = {}; for (const r of billRows) if (r.bill.category) mapped[r.bill.category] = r2((mapped[r.bill.category] || 0) + billMonthAmt(r.bill, m));
+    const groups = cats.map((p) => ({ name: p.name, rows: p.children.map((c) => { const lm = last["cat_" + c.id] || 0, sugAmt = Math.max(0, Math.round(lm - (mapped[c.id] || 0))); return { key: "cat_" + c.id, kind: "cat", label: c.name, sub: mapped[c.id] ? "Includes bills mapped here" : "", last: lm, sug: spread(sugAmt, pays) }; }) }));
+    groups.push({ name: "Other", rows: [["other_transfers", "Transfers to people"], ["other_uncat", "Uncategorised"]].map(([k, l]) => ({ key: k, kind: "cat", label: l, sub: "", last: last[k] || 0, sug: spread(Math.max(0, Math.round(last[k] || 0)), pays) })) });
+    const saverRows = balances.filter((b) => b.kind === "Saver").map((b) => ({ key: "saver_" + b.account, kind: "saver", label: b.account, sub: "Balance " + money(Number(b.balance) || 0), last: null, sug: {} }));
+    return { pays, billRows, groups, saverRows, last };
+  }
+  const catOptions = () => [el("option", { value: "", textContent: "No category" }), ...cats.map((p) => { const g = el("optgroup", { label: p.name }); g.append(...p.children.map((c) => el("option", { value: c.id, textContent: c.name }))); return g; })];
+  let bdRefs = null;
+  function renderBudget() {
+    if ($("view-budget").hidden) return;
+    if (!$("bdMonth").value) $("bdMonth").value = NOW_MONTH;
+    const m = bdMonth(), R = budgetRows(m), tbl = $("bdTable"), all = [];
+    bdRefs = { m, R, rowTot: {}, secTot: {}, colAlloc: {}, colLeft: {}, grand: {} };
+    const head = el("tr", {}, [el("th", { className: "stick", textContent: "Line" }), el("th", { className: "n", innerHTML: "Last month<span class=\"sub\">" + monthName(prevMonth(m)) + "</span>" }),
+      ...R.pays.map((p) => { const th = el("th", { className: "n pay" }); th.append(p.label, el("span", { className: "sub", textContent: p.sub + " · " + money(p.net, 0) })); return th; }), el("th", { className: "n", textContent: "Month total" })]);
+    const body = el("tbody");
+    const cellInput = (row) => R.pays.map((p) => {
+      const v = cellVal(m, row.key, p.key), sug = row.sug[p.key];
+      const inp = el("input", { className: "bc", type: "number", min: "0", step: "0.01", inputMode: "decimal", value: v === null ? "" : v, placeholder: sug ? String(Math.round(sug * 100) / 100) : "" });
+      inp.setAttribute("aria-label", row.label + ", " + p.label + " " + p.sub);
+      inp.disabled = !canWrite;
+      inp.addEventListener("input", () => { const a = allocOf(m); a[row.key] = a[row.key] || {}; if (inp.value === "") delete a[row.key][p.key]; else a[row.key][p.key] = Number(inp.value); budgetTotals(); queueBudgetSave(m); });
+      return el("td", { className: "n" }, [inp]);
+    });
+    const line = (row, ind) => { const tot = el("td", { className: "n num" }); bdRefs.rowTot[row.key] = tot; all.push(row);
+      const first = el("td", { className: "stick" + (ind ? " ind" : "") }, [el("div", { textContent: row.label }), row.sub ? el("span", { className: "sub", textContent: row.sub }) : ""]);
+      if (row.kind === "bill") {
+        const sel = el("select", {}, catOptions()); sel.value = row.bill.category || ""; sel.setAttribute("aria-label", "Category for " + row.label); sel.disabled = !canWrite;
+        sel.addEventListener("change", () => saveBillOpt(row.bill.id, { category: sel.value || null }));
+        const wk = el("input", { type: "checkbox", checked: !!row.bill.saveWeekly }); wk.disabled = !canWrite; wk.addEventListener("change", () => saveBillOpt(row.bill.id, { saveWeekly: wk.checked }));
+        first.append(el("div", { className: "billopts" }, [el("label", {}, ["Category ", sel]), el("label", {}, [wk, " Save weekly from Jai's pays"])]));
+      }
+      return el("tr", {}, [first, el("td", { className: "n num", textContent: row.last === null ? "" : money(row.last) }), ...cellInput(row), tot]); };
+    const section = (key, title, rows) => { const cells = R.pays.map((p) => { const td = el("td", { className: "n num" }); (bdRefs.secTot[key] = bdRefs.secTot[key] || {})[p.key] = td; return td; }); const tot = el("td", { className: "n num" }); bdRefs.secTot[key]._ = tot; const lastTot = rows.reduce((s, r) => s + (r.last || 0), 0);
+      body.append(el("tr", { className: "sec" }, [el("td", { className: "stick", textContent: title }), el("td", { className: "n num", textContent: key === "spend" ? money(r2(lastTot)) : "" }), ...cells, tot])); };
+    section("bills", "Bills", R.billRows);
+    if (!R.billRows.length) body.append(el("tr", {}, [el("td", { colSpan: R.pays.length + 3, className: "small muted", textContent: "No bills yet. Add them on the Bills tab." })]));
+    for (const r of R.billRows) body.append(line(r));
+    section("spend", "Spending", R.groups.flatMap((g) => g.rows));
+    for (const g of R.groups) {
+      const open = BUD.open[g.name] !== false, btn = el("button", { type: "button", textContent: (open ? "▾ " : "▸ ") + g.name }); btn.setAttribute("aria-expanded", String(open));
+      btn.addEventListener("click", () => { BUD.open[g.name] = !open; renderBudget(); });
+      const gl = r2(g.rows.reduce((s, r) => s + (r.last || 0), 0)), gt = el("td", { className: "n num" }); (bdRefs.grand.groups = bdRefs.grand.groups || []).push([gt, g.rows]);
+      body.append(el("tr", { className: "grp" }, [el("td", { className: "stick" }, [btn]), el("td", { className: "n num", textContent: money(gl) }), el("td", { colSpan: R.pays.length }), gt]));
+      if (open) for (const r of g.rows) body.append(line(r, true)); else all.push(...g.rows);
+    }
+    section("save", "Savers", R.saverRows);
+    for (const r of R.saverRows) body.append(line(r));
+    const foot = (label, key, cls) => { const cells = R.pays.map((p) => { const td = el("td", { className: "n num" }); (bdRefs[key])[p.key] = td; return td; }); const tot = el("td", { className: "n num" }); bdRefs[key]._ = tot; return el("tr", { className: "foot" }, [el("td", { className: "stick", textContent: label }), el("td"), ...cells, tot]); };
+    bdRefs.colPay = {}; body.append(foot("Take-home", "colPay"), foot("Allocated", "colAlloc"), foot("Left to allocate", "colLeft"));
+    bdRefs.all = all;
+    tbl.replaceChildren(el("thead", {}, [head]), body);
+    budgetTotals();
+    $("bdFill").disabled = $("bdClear").disabled = !canWrite;
+    if (!canWrite) $("bdMsg").textContent = "Only editors can change the budget.";
+  }
+  function budgetTotals() {
+    if (!bdRefs) return;
+    const { m, R } = bdRefs, sumRow = (row) => R.pays.reduce((s, p) => s + (cellVal(m, row.key, p.key) || 0), 0);
+    for (const row of bdRefs.all) if (bdRefs.rowTot[row.key]) bdRefs.rowTot[row.key].textContent = sumRow(row) ? money(r2(sumRow(row))) : "";
+    const secs = { bills: R.billRows, spend: R.groups.flatMap((g) => g.rows), save: R.saverRows }, colA = {};
+    for (const [k, rows] of Object.entries(secs)) { let t = 0; for (const p of R.pays) { const v = r2(rows.reduce((s, r) => s + (cellVal(m, r.key, p.key) || 0), 0)); bdRefs.secTot[k][p.key].textContent = money(v); colA[p.key] = (colA[p.key] || 0) + v; t += v; } bdRefs.secTot[k]._.textContent = money(r2(t)); }
+    for (const [td, rows] of bdRefs.grand.groups || []) td.textContent = money(r2(rows.reduce((s, r) => s + sumRow(r), 0)));
+    let tp = 0, ta = 0;
+    for (const p of R.pays) { const a = r2(colA[p.key] || 0), l = r2(p.net - a); tp += p.net; ta += a; bdRefs.colPay[p.key].textContent = money(p.net); bdRefs.colAlloc[p.key].textContent = money(a); bdRefs.colLeft[p.key].textContent = money(l); bdRefs.colLeft[p.key].classList.toggle("neg", l < 0); }
+    bdRefs.colPay._.textContent = money(r2(tp)); bdRefs.colAlloc._.textContent = money(r2(ta)); bdRefs.colLeft._.textContent = money(r2(tp - ta)); bdRefs.colLeft._.classList.toggle("neg", tp - ta < 0);
+    $("bdIn").textContent = money(r2(tp), 0); $("bdInSub").textContent = R.pays.length + " pays in " + monthName(m) + (tp ? "" : " · set up pay on the Income tab");
+    $("bdAlloc").textContent = money(r2(ta), 0); $("bdLeft").textContent = money(r2(tp - ta), 0); $("bdLeft").classList.toggle("neg", tp - ta < 0);
+    const lastTot = Object.values(R.last).reduce((s, v) => s + v, 0); $("bdLast").textContent = money(r2(lastTot), 0); $("bdLastSub").textContent = "Spending in " + monthName(prevMonth(m)) + ", bills included";
+  }
+  function queueBudgetSave(m) {
+    if (!db || !canWrite) return;
+    BUD.dirty[m] = true; clearTimeout(BUD.timer); $("bdMsg").textContent = "Saving…";
+    BUD.timer = setTimeout(async () => {
+      try { await db.doc("budget/" + m).set({ alloc: allocOf(m), updatedAt: new Date().toISOString() }); BUD.dirty[m] = false; $("bdMsg").textContent = "Saved."; }
+      catch (e) { $("bdMsg").textContent = e && e.code === "quota_exceeded" ? "The budget is too big to save. Clear an old month, then try again." : "That change wasn't saved. Try again in a moment."; }
+    }, 700);
+  }
+  async function saveBillOpt(id, patch) {
+    if (!db || !canWrite || !bills[id]) return;
+    try { await db.doc("bills/" + id).set({ ...bills[id], ...patch, updatedAt: new Date().toISOString() }); $("bdMsg").textContent = "Saved."; } catch (e) { $("bdMsg").textContent = "That change wasn't saved. Try again in a moment."; }
+  }
+  $("bdMonth").addEventListener("change", () => renderBudget());
+  $("bdFill").addEventListener("click", () => {
+    if (!bdRefs) return; const { m, R } = bdRefs, a = allocOf(m); let n = 0;
+    for (const row of [...R.billRows, ...R.groups.flatMap((g) => g.rows), ...R.saverRows]) for (const [pk, v] of Object.entries(row.sug)) { if (!(v > 0) || cellVal(m, row.key, pk) !== null) continue; a[row.key] = a[row.key] || {}; a[row.key][pk] = v; n++; }
+    renderBudget(); queueBudgetSave(m); $("bdMsg").textContent = n ? "Filled " + n + " boxes. Saving…" : "Nothing to fill: every suggested box already has an amount.";
+  });
+  $("bdClear").addEventListener("click", () => {
+    const b = $("bdClear");
+    if (b.dataset.confirm !== "1") { b.dataset.confirm = "1"; b.textContent = "Confirm clear"; setTimeout(() => { b.dataset.confirm = ""; b.textContent = "Clear this month"; }, 4000); return; }
+    b.dataset.confirm = ""; b.textContent = "Clear this month"; BUD.months[bdMonth()] = {}; renderBudget(); queueBudgetSave(bdMonth());
+  });
+
   // ---------- Tabs ----------
-  const VIEWS = ["overview", "needs", "transactions", "bills", "income"];
+  const VIEWS = ["overview", "needs", "transactions", "bills", "income", "budget"];
   function show(v) {
     if (!VIEWS.includes(v)) v = "overview";
     for (const x of VIEWS) { if (x === v) $("tab-" + x).setAttribute("aria-current", "page"); else $("tab-" + x).removeAttribute("aria-current"); $("view-" + x).hidden = x !== v; }
@@ -1399,7 +1569,7 @@
     $("pageTitle").textContent = $("tab-" + v).firstChild.textContent.trim();
     if (narrow()) setSide(false);
     if (location.hash.slice(1) !== v) history.replaceState(null, "", "#" + v);
-    if (v === "overview") renderOverview(); else if (v === "needs") renderNeeds(); else if (v === "bills") { fillBillAccounts(); renderBills(); } else if (v === "income") renderIncome(); else renderAll();
+    if (v === "overview") renderOverview(); else if (v === "needs") renderNeeds(); else if (v === "bills") { fillBillAccounts(); renderBills(); } else if (v === "income") renderIncome(); else if (v === "budget") renderBudget(); else renderAll();
   }
   for (const b of document.querySelectorAll(".navitem")) b.addEventListener("click", () => show(b.dataset.view));
   // Menu groups open and close on click; the group holding the current page opens itself.
@@ -1469,8 +1639,9 @@
       fillFilters(); renderEverything();
     }, () => { canWrite = false; renderEverything(); });
     if (db) db.collection("tagChanges").onSnapshot((snap) => { tagChanges = {}; for (const d of snap.docs) tagChanges[d.id] = d.data(); fillTagControls(); renderEverything(); }, () => {});
-    if (db) db.collection("income").onSnapshot((snap) => { for (const d of snap.docs) if (INC[d.id] && !INC[d.id].dirty) { INC[d.id].items = (d.data().items || []).map((x) => ({ ...x })); INC[d.id].weeks = {}; for (const [w, L] of Object.entries(d.data().weeks || {})) INC[d.id].weeks[w] = copyItems(L); if (typeof d.data().help === "boolean") INC[d.id].help = d.data().help; INC[d.id].helpFixed = d.data().helpFixed ?? ""; INC[d.id].calc = true; } renderIncome(); }, () => {});
-    if (db) db.collection("bills").onSnapshot((snap) => { bills = {}; for (const d of snap.docs) bills[d.id] = d.data(); renderBills(); }, () => {});
+    if (db) db.collection("income").onSnapshot((snap) => { for (const d of snap.docs) if (INC[d.id] && !INC[d.id].dirty) { INC[d.id].items = (d.data().items || []).map((x) => ({ ...x })); INC[d.id].weeks = {}; for (const [w, L] of Object.entries(d.data().weeks || {})) INC[d.id].weeks[w] = copyItems(L); if (typeof d.data().help === "boolean") INC[d.id].help = d.data().help; INC[d.id].helpFixed = d.data().helpFixed ?? ""; INC[d.id].calc = true; } renderIncome(); renderBudget(); }, () => {});
+    if (db) db.collection("bills").onSnapshot((snap) => { bills = {}; for (const d of snap.docs) bills[d.id] = d.data(); renderBills(); renderBudget(); }, () => {});
+    if (db) db.collection("budget").onSnapshot((snap) => { for (const d of snap.docs) if (!BUD.dirty[d.id]) BUD.months[d.id] = d.data().alloc || {}; if (!$("bdTable").contains(document.activeElement)) renderBudget(); }, () => {});
     if (db) db.collection("tags").onSnapshot((snap) => { newTags = {}; for (const d of snap.docs) newTags[d.id] = d.data(); fillTagControls(); renderEverything(); }, () => {});
     renderEverything();
   }
