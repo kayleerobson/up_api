@@ -432,7 +432,7 @@
     <div class="tiles" aria-label="Income totals">
       <div class="tile"><p class="label">Household take-home</p><span class="stat" id="iHouse">—</span><p class="small muted" id="iHouseSub">For the month picked below</p></div>
       <div class="tile"><p class="label">Jai take-home</p><span class="stat" id="iJaiTile">—</span><p class="small muted" id="iJaiTileSub">—</p></div>
-      <div class="tile"><p class="label">Kaylee take-home</p><span class="stat" id="iKayTile">—</span><p class="small muted">Paid monthly</p></div>
+      <div class="tile"><p class="label">Kaylee take-home</p><span class="stat" id="iKayTile">—</span><p class="small muted">Paid on the 15th</p></div>
       <div class="tile"><p class="label">Average month</p><span class="stat" id="iAvg">—</span><p class="small muted">Jai's 52 pays spread over 12 months, plus Kaylee</p></div>
     </div>
     <div class="card">
@@ -450,7 +450,7 @@
         <div id="iJaiOut"></div>
       </div>
       <div class="card" id="inc-kaylee">
-        <div class="card-head"><div><h2>Kaylee</h2><p class="note">Paid monthly. Enter one month's pay; tax is worked out on the month's pay. Add a novated lease as two lines: the pre-tax part (comes off pay before tax) and the after-tax part (comes off take-home).</p></div></div>
+        <div class="card-head"><div><h2>Kaylee</h2><p class="note">Paid monthly on the 15th. Enter one month's pay; tax is worked out on the month's pay. Add a novated lease as two lines: the pre-tax part (comes off pay before tax) and the after-tax part (comes off take-home).</p></div></div>
         <div class="lines"><div class="pl hd" aria-hidden="true"><span>Item</span><span>Quantity</span><span>Rate $</span><span>Type</span><span class="amt">Amount</span><span></span></div><div class="lines" id="iKayLines"></div></div>
         <div class="helprow"><label class="check"><input type="checkbox" id="iKayHelp" data-help="kaylee"> Has a HECS/HELP debt</label><label class="helpfix" for="iKayHelpFix">HECS per month from payslip (optional) <input id="iKayHelpFix" data-helpfix="kaylee" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Work it out"></label></div>
         <div class="incbar"><button class="btn ghost" type="button" data-add="kaylee">Add line</button><button class="btn" type="button" data-calc="kaylee">Calculate</button><span class="small muted" id="iKayMsg"></span></div>
@@ -1461,9 +1461,10 @@
   const bdMonth = () => $("bdMonth").value || NOW_MONTH;
   const prevMonth = (m) => addMonths(m + "-01", -1).slice(0, 7);
   function budgetPays(m) {
-    const out = [{ key: "kaylee", label: "Kaylee", sub: "Monthly pay", net: payFor("kaylee").net }];
-    for (const d of wednesdays(m)) out.push({ key: "jai_" + d, label: "Jai", sub: wdfmt(d), net: payFor("jai", itemsFor("jai", d)).net, jai: true });
-    return out;
+    // Kaylee is paid on the 15th of each month; columns run in pay-date order.
+    const out = [{ key: "kaylee", date: m + "-15", label: "Kaylee", sub: wdfmt(m + "-15"), net: payFor("kaylee").net }];
+    for (const d of wednesdays(m)) out.push({ key: "jai_" + d, date: d, label: "Jai", sub: wdfmt(d), net: payFor("jai", itemsFor("jai", d)).net, jai: true });
+    return out.sort((a, b) => a.date.localeCompare(b.date));
   }
   const allocOf = (m) => (BUD.months[m] = BUD.months[m] || {});
   // Kaylee's pay only goes to savers; bills and spending come out of Jai's weekly pays.
@@ -1534,7 +1535,7 @@
     const g = SAVERS[saverId(account)]; if (!g || !(Number(g.target) > 0) || !g.by) return null;
     const bal = Number((balances.find((b) => b.account === account) || {}).balance) || 0, key = "saver_" + account;
     let before = 0; for (const [mm, alloc] of Object.entries(BUD.months)) if (mm >= NOW_MONTH && mm < m && alloc[key]) for (const v of Object.values(alloc[key])) before += Number(v) || 0;
-    const need = r2(Math.max(0, Number(g.target) - bal - before)), months = Math.max(1, monthsBetween(m, g.by.slice(0, 7)) + 1);
+    const need = r2(Math.max(0, Number(g.target) - bal - before)), byM = g.by.slice(0, 7), months = Math.max(1, monthsBetween(m, byM) + (g.by.slice(8) >= "15" ? 1 : 0));
     return { target: Number(g.target), by: g.by, bal, before: r2(before), need, months, perMonth: need > 0 ? Math.ceil(need / months) : 0, late: g.by.slice(0, 7) < m };
   }
   function openSaverGoal(account) {
@@ -1552,7 +1553,7 @@
       if (!p) { calc.append("Enter a target and a save-by date to see how much to put aside each month."); return; }
       const line = (a, b) => el("div", { style: "display:flex;justify-content:space-between;gap:12px" }, [el("span", { textContent: a }), el("strong", { className: "num", textContent: b })]);
       calc.append(line("Target", money(p.target)), line("Balance today", money(p.bal)), p.before ? line("Already budgeted before " + monthName(m), money(p.before)) : "", line("Still to save", money(p.need)),
-        line("Months left (" + monthName(m) + " to " + monthName(p.by.slice(0, 7)) + ")", String(p.months)), line("Save each month from Kaylee's pay", money(p.perMonth)),
+        line("Pays left (the 15th, " + monthName(m) + " to " + dfmt(p.by) + ")", String(p.months)), line("Save each month from Kaylee's pay", money(p.perMonth)),
         kayNet > 0 ? el("div", { className: "muted", style: "margin-top:4px", textContent: "That's " + Math.round(p.perMonth / kayNet * 100) + "% of Kaylee's take-home of " + money(kayNet) + "." }) : "",
         p.late ? el("div", { className: "status-bad", style: "margin-top:4px", textContent: "The save-by date is before " + monthName(m) + ", so the whole amount is suggested this month." }) : "");
     };
@@ -1584,7 +1585,7 @@
   }
   const isSaver = (a) => !!a && balances.some((b) => b.kind === "Saver" && b.account === a);
   function budgetRows(m) {
-    const pays = budgetPays(m), last = lastMonthSpend(m), jaiPays = pays.filter((p) => p.jai), kay = pays[0];
+    const pays = budgetPays(m), last = lastMonthSpend(m), jaiPays = pays.filter((p) => p.jai), kay = pays.find((p) => p.key === "kaylee");
     const billRows = Object.entries(bills).map(([id, b]) => ({ id, ...b })).filter((b) => isActive(b) || billDueIn(b, m).length).sort((a, b) => a.name.localeCompare(b.name)).map((b) => {
       const due = billMonthAmt(b, m), plan = billPlan(b, m), sug = plan.per;
       const how = plan.detail.every((x) => x.weeks === 1 && !x.late) && plan.detail.length ? "set aside the Wednesday before each payment"
@@ -1637,7 +1638,7 @@
     const section = (key, title, rows) => { const cells = R.pays.map((p) => { const td = el("td", { className: "n num" }); (bdRefs.secTot[key] = bdRefs.secTot[key] || {})[p.key] = td; return td; }); const tot = el("td", { className: "n num" }); bdRefs.secTot[key]._ = tot; const lastTot = rows.reduce((s, r) => s + (r.last || 0), 0);
       body.append(el("tr", { className: "sec" }, [el("td", { className: "stick", textContent: title }), el("td", { className: "n num", textContent: key === "spend" ? money(r2(lastTot)) : "" }), ...cells, tot])); };
     section("save", "Savers", R.saverRows);
-    { const sug = R.saverRows.reduce((s, r) => s + (r.sug.kaylee || 0), 0), kn = R.pays[0].net; body.lastChild.firstChild.append(el("span", { className: "sub", textContent: sug ? "Suggested from Kaylee's pay: " + money(sug, 0) + (kn > 0 ? " of " + money(kn, 0) + " (" + Math.round(sug / kn * 100) + "%)" : "") : "Click a saver to set its target and save-by date" })); }
+    { const sug = R.saverRows.reduce((s, r) => s + (r.sug.kaylee || 0), 0), kn = R.pays.find((p) => p.key === "kaylee").net; body.lastChild.firstChild.append(el("span", { className: "sub", textContent: sug ? "Suggested from Kaylee's pay: " + money(sug, 0) + (kn > 0 ? " of " + money(kn, 0) + " (" + Math.round(sug / kn * 100) + "%)" : "") : "Click a saver to set its target and save-by date" })); }
     for (const r of R.saverRows) body.append(line(r));
     section("bills", "Bills", R.billRows);
     if (!R.billRows.length) body.append(el("tr", {}, [el("td", { colSpan: R.pays.length + 3, className: "small muted", textContent: "No bills yet. Add them on the Bills tab." })]));
