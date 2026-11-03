@@ -51,6 +51,11 @@
   .side-title { font-family: var(--serif); font-weight: 600; font-size: 17px; }
   .navitem { font: inherit; font-size: 14px; line-height: 20px; text-align: left; display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; background: none; border: 0; border-radius: var(--r-sm); padding: 7px 8px; color: var(--ink); cursor: pointer; }
   .navitem.sub { padding-left: 20px; }
+  .navitem.sub2 { padding-left: 34px; font-size: 13px; }
+  .navlabel { font-size: 12px; font-weight: 600; color: var(--muted); margin: 6px 0 0; padding: 4px 8px 2px 20px; }
+  .subtabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .subtabs .chip { background: var(--raised); border-color: var(--hairline); color: var(--ink); font-weight: 500; }
+  .subtabs .chip[aria-current="page"] { background: var(--cobalt); border-color: var(--cobalt); color: var(--raised); }
   .navitem:hover { background: var(--surface); }
   .navitem[aria-current="page"] { background: var(--cobalt-tint); color: var(--cobalt); font-weight: 600; }
   .navitem:focus-visible, .iconbtn:focus-visible { outline: 2px solid var(--cobalt); outline-offset: 1px; }
@@ -266,7 +271,9 @@
       <button class="navitem sub" id="tab-bills" data-view="bills" type="button">Bills</button>
       <button class="navitem sub" id="tab-income" data-view="income" type="button">Income</button>
       <button class="navitem sub" id="tab-savers" data-view="savers" type="button">Savers</button>
-      <button class="navitem sub" id="tab-budget" data-view="budget" type="button">Budget</button>
+      <p class="navlabel">Budget</p>
+      <button class="navitem sub sub2" id="tab-budget" data-view="budget" type="button">Monthly planning</button>
+      <button class="navitem sub sub2" id="tab-paycheck" data-view="paycheck" type="button">Pay-check planning</button>
       <button class="navitem sub" id="tab-xmas" data-view="xmas" type="button">Christmas</button>
       <button class="navitem sub" id="tab-loans" data-view="loans" type="button">Loans</button>
       <p class="navsoon">More coming soon</p>
@@ -498,6 +505,27 @@
     </div>
   </section>
 
+  <section id="view-paycheck" aria-labelledby="pageTitle" class="stack" hidden>
+    <nav class="subtabs" aria-label="Budget views"><button class="chip" type="button" data-goto="budget">Monthly planning</button><button class="chip" type="button" data-goto="paycheck">Pay-check planning</button></nav>
+    <div class="card">
+      <div class="monthbar"><div class="field" style="width:16rem"><label class="label" for="pcPay">Pay</label><select id="pcPay" style="height:34px;font:inherit;font-size:13px;border:1px solid var(--hairline);border-radius:var(--r-sm);padding:4px 8px;background:var(--raised);color:var(--ink)"></select></div>
+        <p class="small muted">Everything one pay is allocated to on Monthly planning, and the transfers to make when it lands. Lines with nothing typed in yet show the suggested amount (marked "suggested").</p></div>
+    </div>
+    <div class="tiles" aria-label="This pay">
+      <div class="tile"><p class="label">Take-home</p><span class="stat" id="pcNet">—</span><p class="small muted" id="pcNetSub">—</p></div>
+      <div class="tile"><p class="label">Allocated</p><span class="stat" id="pcAlloc">—</span><p class="small muted" id="pcAllocSub">—</p></div>
+      <div class="tile"><p class="label">Left over</p><span class="stat" id="pcLeft">—</span><p class="small muted">Stays in 2Up Spending unallocated</p></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div><h2>Transfers to make</h2><p class="note">Move these from 2Up Spending into each saver when the pay arrives. Spending stays in 2Up Spending.</p></div><button class="btn ghost csv" type="button" data-csv="paycheck">Download CSV</button></div>
+      <div class="tablebox"><table><thead><tr><th>Move to</th><th class="n">Amount</th><th>What it covers</th></tr></thead><tbody id="pcMoves"></tbody></table></div>
+    </div>
+    <div class="grid2">
+      <div class="card"><div class="card-head"><div><h3>Bills from this pay</h3></div></div><div class="tablebox short"><table><thead><tr><th>Bill</th><th>Next due</th><th class="n">From this pay</th></tr></thead><tbody id="pcBills"></tbody></table></div></div>
+      <div class="card"><div class="card-head"><div><h3>Savings and spending from this pay</h3></div></div><div class="tablebox short"><table><thead><tr><th>Line</th><th class="n">From this pay</th></tr></thead><tbody id="pcOther"></tbody></table></div></div>
+    </div>
+  </section>
+
   <section id="view-savers" aria-labelledby="pageTitle" class="stack" hidden>
     <div class="tiles" aria-label="Saver totals">
       <div class="tile"><p class="label">Savings savers</p><span class="stat" id="svSavBal">—</span><p class="small muted" id="svSavSub">—</p></div>
@@ -513,6 +541,7 @@
   </section>
 
   <section id="view-budget" aria-labelledby="pageTitle" class="stack" hidden>
+    <nav class="subtabs" aria-label="Budget views"><button class="chip" type="button" data-goto="budget">Monthly planning</button><button class="chip" type="button" data-goto="paycheck">Pay-check planning</button></nav>
     <div class="tiles" aria-label="Budget totals">
       <div class="tile"><p class="label">Take-home this month</p><span class="stat" id="bdIn">—</span><p class="small muted" id="bdInSub">From the Income tab</p></div>
       <div class="tile"><p class="label">Allocated</p><span class="stat" id="bdAlloc">—</span><p class="small muted" id="bdAllocSub">Savers, bills and spending</p></div>
@@ -1752,6 +1781,7 @@
     if (!canWrite) $("bdMsg").textContent = "Only editors can change the budget.";
   }
   function budgetTotals() {
+    renderPaycheck();
     if (!bdRefs) return;
     const { m, R } = bdRefs, sumRow = (row) => R.pays.reduce((s, p) => s + (cellVal(m, row.key, p.key) || 0), 0);
     for (const row of bdRefs.all) if (bdRefs.rowTot[row.key]) bdRefs.rowTot[row.key].textContent = sumRow(row) ? money(r2(sumRow(row))) : "";
@@ -2101,16 +2131,52 @@
   $("bmAll").addEventListener("click", () => { const sug = bmSuggestions(); if (sug.length) bmSet(sug.map((c) => confirmMatch(c.t, c.b.id)), "Confirmed " + sug.length + " matches."); });
   $("bmSearch").addEventListener("input", () => { BM.search = $("bmSearch").value; renderBillMatch(); });
 
+  // ---------- Pay-check planning ----------
+  // One pay at a time: what Monthly planning gives it to, grouped into the saver transfers to make.
+  const PC = { sel: null, rows: [] };
+  function pcPays() {
+    const out = []; for (const m of [addMonths(NOW_MONTH + "-01", -1).slice(0, 7), NOW_MONTH, addMonths(NOW_MONTH + "-01", 1).slice(0, 7)]) for (const p of budgetPays(m)) out.push({ ...p, m });
+    return out.sort((a, b) => a.date.localeCompare(b.date));
+  }
+  function renderPaycheck() {
+    if ($("view-paycheck").hidden) return;
+    const pays = pcPays(), sel = $("pcPay");
+    if (!PC.sel || !pays.some((p) => p.m + "|" + p.key === PC.sel)) { const nx = pays.find((p) => p.date >= todayISO()) || pays[pays.length - 1]; PC.sel = nx.m + "|" + nx.key; }
+    sel.replaceChildren(...pays.map((p) => el("option", { value: p.m + "|" + p.key, textContent: p.label + " · " + wdfmt(p.date) + (p.date === todayISO() ? " (today)" : "") + " · " + money(p.net, 0) })));
+    sel.value = PC.sel;
+    const [m, key] = PC.sel.split("|"), pay = pays.find((p) => p.m === m && p.key === key), R = budgetRows(m);
+    const amt = (row) => { const v = cellVal(m, row.key, key); if (v !== null) return { v, sug: false }; const sg = row.sug[key]; return sg ? { v: sg, sug: true } : null; };
+    const moves = {}, add = (dest, v, what, sug) => { const o = (moves[dest] = moves[dest] || { v: 0, what: [], sug: false }); o.v = r2(o.v + v); o.what.push(what); if (sug) o.sug = true; };
+    const billLines = [], otherLines = []; let total = 0, sugTotal = 0;
+    for (const r of R.saverRows) { const a = amt(r); if (!a || !a.v) continue; add(r.label, a.v, "Savings", a.sug); otherLines.push([r.label + " (saver)", a]); if (a.sug) sugTotal += a.v; else total += a.v; }
+    for (const r of R.billRows) { const a = amt(r); if (!a || !a.v) continue; add(r.saver || "No saver picked yet", a.v, r.label, a.sug); billLines.push([r, a]); if (a.sug) sugTotal += a.v; else total += a.v; }
+    for (const g of R.groups) for (const r of g.rows) { const a = amt(r); if (!a || !a.v) continue; add("2Up Spending (stays put)", a.v, r.label, a.sug); otherLines.push([r.label, a]); if (a.sug) sugTotal += a.v; else total += a.v; }
+    total = r2(total); sugTotal = r2(sugTotal);
+    $("pcNet").textContent = money(pay.net, 0); $("pcNetSub").textContent = pay.label + "'s pay · " + longDate(pay.date);
+    $("pcAlloc").textContent = money(total, 0); $("pcAllocSub").textContent = sugTotal ? "Plus " + money(sugTotal, 0) + " suggested but not allocated yet" : "Everything here is allocated";
+    $("pcLeft").textContent = money(r2(pay.net - total), 0); $("pcLeft").classList.toggle("neg", pay.net - total < 0);
+    const amtCell = (a) => el("td", { className: "n num" + (a.sug ? " muted" : ""), textContent: money(a.v) + (a.sug ? " suggested" : "") });
+    const order = Object.keys(moves).sort((a, b) => (a.startsWith("2Up") ? 1 : 0) - (b.startsWith("2Up") ? 1 : 0) || moves[b].v - moves[a].v);
+    PC.rows = order.map((d) => [d, moves[d].v, moves[d].what.join(", ")]);
+    $("pcMoves").replaceChildren(...(order.length ? order.map((d) => el("tr", {}, [el("td", { className: "desc" + (d.startsWith("No saver") ? " status-bad" : ""), textContent: d, style: "white-space:nowrap" }), amtCell({ v: moves[d].v, sug: moves[d].sug }), el("td", { className: "small muted", textContent: moves[d].what.join(", ") })])) : [el("tr", {}, [el("td", { colSpan: 3, className: "empty", textContent: "Nothing allocated to this pay yet. Fill it in on Monthly planning." })])]));
+    $("pcBills").replaceChildren(...(billLines.length ? billLines.sort((a, b) => (a[0].next || "").localeCompare(b[0].next || "")).map(([r, a]) => el("tr", {}, [el("td", { textContent: r.label }), el("td", { className: "num", textContent: r.next ? dfmt(r.next) : "" }), amtCell(a)])) : [el("tr", {}, [el("td", { colSpan: 3, className: "empty", textContent: "No bills from this pay." })])]));
+    $("pcOther").replaceChildren(...(otherLines.length ? otherLines.map(([l, a]) => el("tr", {}, [el("td", { textContent: l }), amtCell(a)])) : [el("tr", {}, [el("td", { colSpan: 2, className: "empty", textContent: "Nothing else from this pay." })])]));
+  }
+  $("pcPay").addEventListener("change", () => { PC.sel = $("pcPay").value; renderPaycheck(); });
+  for (const c of document.querySelectorAll("[data-goto]")) c.addEventListener("click", () => show(c.dataset.goto));
+  csvBuilders.paycheck = () => ["paycheck-" + (PC.sel || "").replace("|", "-"), ["Move to", "Amount", "What it covers"], PC.rows.map((r) => [r[0], r[1].toFixed(2), r[2]])];
+
   // ---------- Tabs ----------
-  const VIEWS = ["overview", "needs", "transactions", "billmatch", "bills", "income", "savers", "budget", "xmas", "loans"];
+  const VIEWS = ["overview", "needs", "transactions", "billmatch", "bills", "income", "savers", "budget", "paycheck", "xmas", "loans"];
   function show(v) {
     if (!VIEWS.includes(v)) v = "overview";
     for (const x of VIEWS) { if (x === v) $("tab-" + x).setAttribute("aria-current", "page"); else $("tab-" + x).removeAttribute("aria-current"); $("view-" + x).hidden = x !== v; }
     for (const g of document.querySelectorAll(".navgroup")) { const has = !!$(g.getAttribute("aria-controls")).querySelector('[aria-current="page"]'); g.classList.toggle("has-current", has); if (has) setGroup(g, true); }
     $("pageTitle").textContent = $("tab-" + v).firstChild.textContent.trim();
+    for (const c of document.querySelectorAll("[data-goto]")) { if (c.dataset.goto === v) c.setAttribute("aria-current", "page"); else c.removeAttribute("aria-current"); }
     if (narrow()) setSide(false);
     if (location.hash.slice(1) !== v) history.replaceState(null, "", "#" + v);
-    if (v === "overview") renderOverview(); else if (v === "needs") renderNeeds(); else if (v === "bills") { fillBillAccounts(); renderBills(); } else if (v === "income") renderIncome(); else if (v === "budget") renderBudget(); else if (v === "xmas") renderXmas(); else if (v === "loans") renderLoans(); else if (v === "savers") renderSavers(); else if (v === "billmatch") renderBillMatch(); else renderAll();
+    if (v === "overview") renderOverview(); else if (v === "needs") renderNeeds(); else if (v === "bills") { fillBillAccounts(); renderBills(); } else if (v === "income") renderIncome(); else if (v === "budget") renderBudget(); else if (v === "xmas") renderXmas(); else if (v === "loans") renderLoans(); else if (v === "savers") renderSavers(); else if (v === "billmatch") renderBillMatch(); else if (v === "paycheck") renderPaycheck(); else renderAll();
   }
   for (const b of document.querySelectorAll(".navitem")) b.addEventListener("click", () => show(b.dataset.view));
   // Menu groups open and close on click; the group holding the current page opens itself.
