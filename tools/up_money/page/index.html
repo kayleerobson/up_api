@@ -184,6 +184,10 @@
   .weekpick .chip.own { border-color: var(--cobalt); color: var(--cobalt); }
   .weekpick .chip[aria-pressed="true"] { background: var(--cobalt); border-color: var(--cobalt); color: var(--raised); }
   #iWeekNote { margin: 0 0 8px; }
+  .helprow { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: end; }
+  .helpfix { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: var(--ink); margin-top: 12px; }
+  .helpfix input { width: 8rem; height: 32px; box-sizing: border-box; font: inherit; font-size: 13px; color: var(--ink); background: var(--raised); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 4px 6px; }
+  .helprow[data-off] .helpfix { display: none; }
   .check { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: var(--ink); cursor: pointer; margin-top: 12px; }
   .check input { width: 16px; height: 16px; margin: 0; accent-color: var(--cobalt); }
   .sumtable td, .sumtable th { padding: 6px 8px; }
@@ -405,7 +409,7 @@
     </div>
     <div class="card">
       <div class="monthbar"><div class="field"><label class="label" for="iMonth">Month</label><input id="iMonth" type="month"></div>
-        <p class="small muted">Tax is an estimate of PAYG withholding at 2026–27 rates, including the 2% Medicare levy and the low income tax offset, and assumes the tax-free threshold is claimed. HECS/HELP repayments use the 2025–26 thresholds until the ATO publishes 2026–27 figures.</p></div>
+        <p class="small muted">Tax is an estimate of PAYG withholding at 2026–27 rates, including the 2% Medicare levy and the low income tax offset, and assumes the tax-free threshold is claimed. HECS/HELP is worked out on taxable pay (after pre-tax deductions such as a novated lease) using the 2025–26 thresholds, so it can be a few dollars off your payslip; type the payslip figure in to use it exactly.</p></div>
     </div>
     <div class="incgrid">
       <div class="card" id="inc-jai">
@@ -413,14 +417,14 @@
         <div class="weekpick" id="iWeeks" role="group" aria-label="Pay week"></div>
         <p class="small muted" id="iWeekNote"></p>
         <div class="lines"><div class="pl hd" aria-hidden="true"><span>Item</span><span>Quantity</span><span>Rate $</span><span>Type</span><span class="amt">Amount</span><span></span></div><div class="lines" id="iJaiLines"></div></div>
-        <label class="check"><input type="checkbox" id="iJaiHelp" data-help="jai"> Has a HECS/HELP debt</label>
+        <div class="helprow"><label class="check"><input type="checkbox" id="iJaiHelp" data-help="jai"> Has a HECS/HELP debt</label><label class="helpfix" for="iJaiHelpFix">HECS per week from payslip (optional) <input id="iJaiHelpFix" data-helpfix="jai" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Work it out"></label></div>
         <div class="incbar"><button class="btn ghost" type="button" data-add="jai">Add line</button><button class="btn" type="button" data-calc="jai">Calculate</button><span class="small muted" id="iJaiMsg"></span></div>
         <div id="iJaiOut"></div>
       </div>
       <div class="card" id="inc-kaylee">
         <div class="card-head"><div><h2>Kaylee</h2><p class="note">Paid monthly. Enter one month's pay; tax is worked out on the month's pay. Add a novated lease as two lines: the pre-tax part (comes off pay before tax) and the after-tax part (comes off take-home).</p></div></div>
         <div class="lines"><div class="pl hd" aria-hidden="true"><span>Item</span><span>Quantity</span><span>Rate $</span><span>Type</span><span class="amt">Amount</span><span></span></div><div class="lines" id="iKayLines"></div></div>
-        <label class="check"><input type="checkbox" id="iKayHelp" data-help="kaylee"> Has a HECS/HELP debt</label>
+        <div class="helprow"><label class="check"><input type="checkbox" id="iKayHelp" data-help="kaylee"> Has a HECS/HELP debt</label><label class="helpfix" for="iKayHelpFix">HECS per month from payslip (optional) <input id="iKayHelpFix" data-helpfix="kaylee" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Work it out"></label></div>
         <div class="incbar"><button class="btn ghost" type="button" data-add="kaylee">Add line</button><button class="btn" type="button" data-calc="kaylee">Calculate</button><span class="small muted" id="iKayMsg"></span></div>
         <div id="iKayOut"></div>
       </div>
@@ -1271,7 +1275,7 @@
   // Tax withheld from one pay: the pay is annualised, taxed, and divided back, rounded to whole dollars like the ATO tables.
   const payTax = (taxable, perYear) => Math.round(annualTax(taxable * perYear) / perYear);
   // HECS/HELP compulsory repayment (marginal system from 2025-26): nothing up to the threshold, 15c per dollar above it,
-  // then a flat amount plus 17c per dollar above the upper threshold. Worked on repayment income, which adds back pre-tax (salary sacrificed) amounts.
+  // then a flat amount plus 17c per dollar above the upper threshold. Withheld on taxable pay (after pre-tax deductions), the same pay PAYG uses; the extra on salary-sacrificed amounts is settled at tax time, not on payslips.
   const HELP = { from: 67000, rate: 0.15, upper: 125000, base: 8700, upperRate: 0.17 };
   const helpAnnual = (inc) => inc <= HELP.from ? 0 : inc <= HELP.upper ? (inc - HELP.from) * HELP.rate : HELP.base + (inc - HELP.upper) * HELP.upperRate;
   const payHelp = (inc, perYear) => Math.round(helpAnnual(inc * perYear) / perYear);
@@ -1297,7 +1301,7 @@
   function payFor(who, items) {
     const p = INC[who], L = items || INC[who].items, sum = (k) => r2(L.filter((x) => kindOf(x) === k).reduce((s, x) => s + lineAmt(x), 0));
     const pay = sum("taxed"), free = sum("free"), pre = sum("pre"), post = sum("post"), taxable = r2(Math.max(0, pay - pre));
-    const tax = payTax(taxable, p.perYear), help = p.help ? payHelp(taxable + pre, p.perYear) : 0;
+    const tax = payTax(taxable, p.perYear), help = !p.help ? 0 : p.helpFixed !== "" && p.helpFixed != null ? r2(Number(p.helpFixed) || 0) : payHelp(taxable, p.perYear);
     return { pay, free, pre, post, taxable, gross: r2(pay + free), tax, help, out: tax + help, net: r2(taxable + free - tax - help - post) };
   }
   // Wednesdays (Jai's pay day) in a YYYY-MM month.
@@ -1368,7 +1372,7 @@
     $("iHouse").textContent = jm === null && km === null ? "—" : money(r2((jm || 0) + (km || 0)), 0); $("iHouseSub").textContent = monthName(m);
     $("iAvg").textContent = jm === null && km === null ? "—" : money(r2((INC.jai.calc ? payFor("jai").net * 52 / 12 : 0) + (km || 0)), 0);
   }
-  function renderIncome() { if ($("view-income").hidden) return; if (!$("iMonth").value) $("iMonth").value = NOW_MONTH; drawWeeks(); for (const w of ["jai", "kaylee"]) { $(INC[w].helpBox).checked = INC[w].help; drawPayLines(w); drawOut(w); } }
+  function renderIncome() { if ($("view-income").hidden) return; if (!$("iMonth").value) $("iMonth").value = NOW_MONTH; drawWeeks(); for (const w of ["jai", "kaylee"]) { $(INC[w].helpBox).checked = INC[w].help; $(INC[w].helpBox + "Fix").value = INC[w].helpFixed ?? ""; $(INC[w].helpBox).closest(".helprow").toggleAttribute("data-off", !INC[w].help); drawPayLines(w); drawOut(w); } }
   const keepLines = (L) => L.filter((x) => (x.name || "").trim() || lineAmt(x));
   const saveLines = (L) => L.map((x) => ({ name: (x.name || "").trim(), qty: Number(x.qty) || 0, rate: Number(x.rate) || 0, kind: kindOf(x) }));
   async function calcIncome(who) {
@@ -1377,11 +1381,12 @@
     p.calc = true; if (who === "jai") drawWeeks(); drawPayLines(who); drawOut(who);
     if (!db || !canWrite) { msg.textContent = "Calculated. Only editors can save pay lines."; return; }
     const weeks = {}; for (const [d, L] of Object.entries(p.weeks)) weeks[d] = saveLines(L);
-    try { await db.doc("income/" + who).set({ help: !!p.help, items: saveLines(p.items), weeks, updatedAt: new Date().toISOString() }); p.dirty = false; msg.textContent = "Saved."; }
+    try { await db.doc("income/" + who).set({ help: !!p.help, helpFixed: p.helpFixed === "" || p.helpFixed == null ? null : Number(p.helpFixed), items: saveLines(p.items), weeks, updatedAt: new Date().toISOString() }); p.dirty = false; msg.textContent = "Saved."; }
     catch (e) { msg.textContent = "Calculated, but the pay lines weren't saved. Try again in a moment."; }
   }
   for (const b of document.querySelectorAll("[data-add]")) b.addEventListener("click", () => { const w = b.dataset.add; editItems(w).push({ name: "", qty: 1, rate: 0, kind: "taxed" }); INC[w].dirty = true; INC[w].calc = false; drawPayLines(w); drawOut(w); const ins = $(INC[w].lines).querySelectorAll('input[type="text"]'); if (ins.length) ins[ins.length - 1].focus(); });
-  for (const b of document.querySelectorAll("[data-help]")) b.addEventListener("change", () => { const p = INC[b.dataset.help]; p.help = b.checked; p.dirty = true; p.calc = false; drawOut(b.dataset.help); });
+  for (const b of document.querySelectorAll("[data-help]")) b.addEventListener("change", () => { const p = INC[b.dataset.help]; p.help = b.checked; b.closest(".helprow").toggleAttribute("data-off", !b.checked); p.dirty = true; p.calc = false; drawOut(b.dataset.help); });
+  for (const b of document.querySelectorAll("[data-helpfix]")) b.addEventListener("input", () => { const p = INC[b.dataset.helpfix]; p.helpFixed = b.value; p.dirty = true; p.calc = false; drawOut(b.dataset.helpfix); });
   for (const b of document.querySelectorAll("[data-calc]")) b.addEventListener("click", () => calcIncome(b.dataset.calc));
   $("iMonth").addEventListener("change", () => { drawWeeks(); drawPayLines("jai"); drawOut("jai"); renderIncomeTiles(); });
 
@@ -1464,7 +1469,7 @@
       fillFilters(); renderEverything();
     }, () => { canWrite = false; renderEverything(); });
     if (db) db.collection("tagChanges").onSnapshot((snap) => { tagChanges = {}; for (const d of snap.docs) tagChanges[d.id] = d.data(); fillTagControls(); renderEverything(); }, () => {});
-    if (db) db.collection("income").onSnapshot((snap) => { for (const d of snap.docs) if (INC[d.id] && !INC[d.id].dirty) { INC[d.id].items = (d.data().items || []).map((x) => ({ ...x })); INC[d.id].weeks = {}; for (const [w, L] of Object.entries(d.data().weeks || {})) INC[d.id].weeks[w] = copyItems(L); if (typeof d.data().help === "boolean") INC[d.id].help = d.data().help; INC[d.id].calc = true; } renderIncome(); }, () => {});
+    if (db) db.collection("income").onSnapshot((snap) => { for (const d of snap.docs) if (INC[d.id] && !INC[d.id].dirty) { INC[d.id].items = (d.data().items || []).map((x) => ({ ...x })); INC[d.id].weeks = {}; for (const [w, L] of Object.entries(d.data().weeks || {})) INC[d.id].weeks[w] = copyItems(L); if (typeof d.data().help === "boolean") INC[d.id].help = d.data().help; INC[d.id].helpFixed = d.data().helpFixed ?? ""; INC[d.id].calc = true; } renderIncome(); }, () => {});
     if (db) db.collection("bills").onSnapshot((snap) => { bills = {}; for (const d of snap.docs) bills[d.id] = d.data(); renderBills(); }, () => {});
     if (db) db.collection("tags").onSnapshot((snap) => { newTags = {}; for (const d of snap.docs) newTags[d.id] = d.data(); fillTagControls(); renderEverything(); }, () => {});
     renderEverything();
