@@ -519,17 +519,18 @@
     <div class="card">
       <div class="monthbar"><div class="field" style="width:16rem"><label class="label" for="pcPay">Pay</label><select id="pcPay" style="height:34px;font:inherit;font-size:13px;border:1px solid var(--hairline);border-radius:var(--r-sm);padding:4px 8px;background:var(--raised);color:var(--ink)"></select></div>
         <p class="small muted" id="pcIntro"></p></div>
-      <div class="subtabs" role="group" aria-label="Pay view" style="margin-top:12px"><button class="chip" type="button" data-pcmode="budget">Budget</button><button class="chip" type="button" data-pcmode="forecast">Forecast</button><button class="chip" type="button" data-pcmode="actual">Actuals</button></div>
+      <div class="subtabs" role="group" aria-label="Pay view" style="margin-top:12px"><button class="chip" type="button" data-pcmode="budget">Actions</button><button class="chip" type="button" data-pcmode="forecast">Forecast</button><button class="chip" type="button" data-pcmode="actual">Actuals</button></div>
     </div>
     <div id="pcBudget" class="stack">
     <div class="tiles" aria-label="This pay">
-      <div class="tile"><p class="label">Take-home</p><span class="stat" id="pcNet">—</span><p class="small muted" id="pcNetSub">—</p></div>
-      <div class="tile"><p class="label">Allocated</p><span class="stat" id="pcAlloc">—</span><p class="small muted" id="pcAllocSub">—</p></div>
-      <div class="tile"><p class="label">Left over</p><span class="stat" id="pcLeft">—</span><p class="small muted">Stays in 2Up Spending unallocated</p></div>
+      <div class="tile"><p class="label">Transfers to make</p><span class="stat" id="pcToMove">—</span><p class="small muted" id="pcToMoveSub">—</p></div>
+      <div class="tile"><p class="label">Moved so far</p><span class="stat" id="pcMoved">—</span><p class="small muted" id="pcMovedSub">—</p></div>
+      <div class="tile"><p class="label">Still to move</p><span class="stat" id="pcStill">—</span><p class="small muted" id="pcStillSub">—</p></div>
+      <div class="tile"><p class="label">Left over in this pay</p><span class="stat" id="pcLeft">—</span><p class="small muted" id="pcLeftSub">—</p></div>
     </div>
     <div class="card">
-      <div class="card-head"><div><h2>Transfers to make</h2><p class="note">Move these from 2Up Spending into each saver when the pay arrives. Spending stays in 2Up Spending.</p></div><button class="btn ghost csv" type="button" data-csv="paycheck">Download CSV</button></div>
-      <div class="tablebox"><table><thead><tr><th>Move to</th><th class="n">Amount</th><th>What it covers</th></tr></thead><tbody id="pcMoves"></tbody></table></div>
+      <div class="card-head"><div><h2>Transfers to make</h2><p class="note">Move these from 2Up Spending into each saver when the pay lands. "Moved" counts transfers into that saver seen in Up since this pay (up to the last data refresh); tick Done for anything you've moved that hasn't shown up yet.</p></div><button class="btn ghost csv" type="button" data-csv="paycheck">Download CSV</button></div>
+      <div class="tablebox"><table><thead><tr><th style="width:3rem">Done</th><th>Move to</th><th class="n">Amount</th><th class="n">Moved</th><th class="n">Still to move</th><th>What it covers</th></tr></thead><tbody id="pcMoves"></tbody></table></div>
     </div>
     <div class="grid2">
       <div class="card"><div class="card-head"><div><h3>Bills from this pay</h3></div></div><div class="tablebox short"><table><thead><tr><th>Bill</th><th>Next due</th><th class="n">From this pay</th></tr></thead><tbody id="pcBills"></tbody></table></div></div>
@@ -2174,6 +2175,12 @@
     const out = []; for (const m of [addMonths(NOW_MONTH + "-01", -1).slice(0, 7), NOW_MONTH, addMonths(NOW_MONTH + "-01", 1).slice(0, 7)]) for (const p of budgetPays(m)) out.push({ ...p, m });
     return out.sort((a, b) => a.date.localeCompare(b.date));
   }
+  // actions/<YYYY-MM>_<payKey>: {done: {saverName: true}} for transfers ticked off by hand.
+  const ACT = { items: {} }, STAYS = "2Up Spending (stays put)";
+  async function saveActionDone(aid, dest, on) {
+    if (!db || !canWrite) return; const cur = ACT.items[aid] || { done: {} }; const next = { done: { ...(cur.done || {}), [dest]: on }, updatedAt: new Date().toISOString() };
+    ACT.items[aid] = next; renderPaycheck(); try { await db.doc("actions/" + aid).set(next); } catch (e) { /* stays ticked here until the next sync */ }
+  }
   function renderPaycheck() {
     if ($("view-paycheck").hidden) return;
     const pays = pcPays(), sel = $("pcPay");
@@ -2186,15 +2193,32 @@
     const billLines = [], otherLines = []; let total = 0, sugTotal = 0;
     for (const r of R.saverRows) { const a = amt(r); if (!a || !a.v) continue; add(r.label, a.v, "Savings", a.sug); otherLines.push([r.label + " (saver)", a]); if (a.sug) sugTotal += a.v; else total += a.v; }
     for (const r of R.billRows) { const a = amt(r); if (!a || !a.v) continue; add(r.saver || "No saver picked yet", a.v, r.label, a.sug); billLines.push([r, a]); if (a.sug) sugTotal += a.v; else total += a.v; }
-    for (const g of R.groups) for (const r of g.rows) { const a = amt(r); if (!a || !a.v) continue; add("2Up Spending (stays put)", a.v, r.label, a.sug); otherLines.push([r.label, a]); if (a.sug) sugTotal += a.v; else total += a.v; }
+    for (const g of R.groups) for (const r of g.rows) { const a = amt(r); if (!a || !a.v) continue; add(STAYS, a.v, r.label, a.sug); otherLines.push([r.label, a]); if (a.sug) sugTotal += a.v; else total += a.v; }
     total = r2(total); sugTotal = r2(sugTotal);
-    $("pcNet").textContent = money(pay.net, 0); $("pcNetSub").textContent = pay.label + "'s pay · " + longDate(pay.date);
-    $("pcAlloc").textContent = money(total, 0); $("pcAllocSub").textContent = sugTotal ? "Plus " + money(sugTotal, 0) + " suggested but not allocated yet" : "Everything here is allocated";
     $("pcLeft").textContent = money(r2(pay.net - total), 0); $("pcLeft").classList.toggle("neg", pay.net - total < 0);
+    $("pcLeftSub").textContent = money(pay.net, 0) + " take-home − " + money(total, 0) + " allocated" + (sugTotal ? " (" + money(sugTotal, 0) + " more suggested)" : "");
     const amtCell = (a) => el("td", { className: "n num" + (a.sug ? " muted" : ""), textContent: money(a.v) + (a.sug ? " suggested" : "") });
-    const order = Object.keys(moves).sort((a, b) => (a.startsWith("2Up") ? 1 : 0) - (b.startsWith("2Up") ? 1 : 0) || moves[b].v - moves[a].v);
+    const order = Object.keys(moves).sort((a, b) => (a === STAYS ? 1 : 0) - (b === STAYS ? 1 : 0) || moves[b].v - moves[a].v);
     PC.rows = order.map((d) => [d, moves[d].v, moves[d].what.join(", ")]);
-    $("pcMoves").replaceChildren(...(order.length ? order.map((d) => el("tr", {}, [el("td", { className: "desc" + (d.startsWith("No saver") ? " status-bad" : ""), textContent: d, style: "white-space:nowrap" }), amtCell({ v: moves[d].v, sug: moves[d].sug }), el("td", { className: "small muted", textContent: moves[d].what.join(", ") })])) : [el("tr", {}, [el("td", { colSpan: 3, className: "empty", textContent: "Nothing allocated to this pay yet. Fill it in on Monthly planning." })])]));
+    // Actions: what's been moved into each saver since this pay (until the same person's next pay), plus anything ticked Done.
+    const end = addDays(key === "kaylee" ? addMonths(m + "-15", 1) : addDays(pay.date, 7), -1), aid = m + "_" + key, done = (ACT.items[aid] && ACT.items[aid].done) || {};
+    let toMove = 0, moved = 0, still = 0, open = 0;
+    const rowsEl = order.map((d) => {
+      const o = moves[d], sav = isSaver(d), stays = d === STAYS, none = d.startsWith("No saver");
+      const seen = sav ? r2(tx.filter((t) => t.internal && t.amount > 0 && t.account === d && t.date >= pay.date && t.date <= end).reduce((s, t) => s + t.amount, 0)) : 0;
+      const auto = sav && seen >= o.v - 0.005, ticked = !!done[d], left = stays || ticked || auto ? 0 : r2(Math.max(0, o.v - seen));
+      if (!stays) { toMove += o.v; moved += ticked || auto ? o.v : Math.min(seen, o.v); still += left; if (left > 0) open++; }
+      const cb = el("input", { type: "checkbox", checked: ticked || auto }); Object.assign(cb.style, { width: "16px", height: "16px", accentColor: "var(--cobalt)" });
+      cb.disabled = !canWrite || none || auto; cb.setAttribute("aria-label", "Moved to " + d);
+      cb.addEventListener("change", () => saveActionDone(aid, d, cb.checked));
+      return el("tr", {}, [el("td", {}, stays ? [] : [cb]), el("td", { className: "desc" + (none ? " status-bad" : ""), textContent: d, style: "white-space:nowrap" }), amtCell({ v: o.v, sug: o.sug }),
+        el("td", { className: "n num", textContent: stays ? "" : seen ? money(seen) : ticked ? "ticked" : "" }), el("td", { className: "n num " + (stays ? "muted" : left > 0 ? "status-bad" : "status-good"), textContent: stays ? "stays put" : left > 0 ? money(left) : "✓" }), el("td", { className: "small muted", textContent: (none ? "Pick a saver for these on Monthly planning: " : "") + o.what.join(", ") })]);
+    });
+    $("pcMoves").replaceChildren(...(order.length ? rowsEl : [el("tr", {}, [el("td", { colSpan: 6, className: "empty", textContent: "Nothing allocated to this pay yet. Fill it in on Monthly planning." })])]));
+    $("pcToMove").textContent = money(r2(toMove), 0); $("pcToMoveSub").textContent = pay.label + "'s pay · " + longDate(pay.date);
+    $("pcMoved").textContent = money(r2(moved), 0); $("pcMovedSub").textContent = pay.date > todayISO() ? "Pay hasn't landed yet" : "Seen in Up up to " + longDate(end > todayISO() ? todayISO() : end);
+    $("pcStill").textContent = money(r2(still), 0); $("pcStill").classList.toggle("neg", still > 0); $("pcStill").classList.toggle("status-good", still <= 0 && toMove > 0);
+    $("pcStillSub").textContent = still > 0 ? open + " transfer" + (open === 1 ? "" : "s") + " to do" + (pay.date > todayISO() ? " when the pay lands" : "") : toMove > 0 ? "All done" : "Nothing to move";
     $("pcBills").replaceChildren(...(billLines.length ? billLines.sort((a, b) => (a[0].next || "").localeCompare(b[0].next || "")).map(([r, a]) => el("tr", {}, [el("td", { textContent: r.label }), el("td", { className: "num", textContent: r.next ? dfmt(r.next) : "" }), amtCell(a)])) : [el("tr", {}, [el("td", { colSpan: 3, className: "empty", textContent: "No bills from this pay." })])]));
     setTimeout(() => setPcMode(FC.mode), 0);
     $("pcOther").replaceChildren(...(otherLines.length ? otherLines.map(([l, a]) => el("tr", {}, [el("td", { textContent: l }), amtCell(a)])) : [el("tr", {}, [el("td", { colSpan: 2, className: "empty", textContent: "Nothing else from this pay." })])]));
@@ -2298,7 +2322,7 @@
     FC.mode = mode; for (const b of document.querySelectorAll("[data-pcmode]")) b.setAttribute("aria-pressed", String(b.dataset.pcmode === mode));
     for (const b of document.querySelectorAll("[data-pcmode]")) { if (b.dataset.pcmode === mode) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); }
     $("pcBudget").hidden = mode !== "budget"; $("pcForecast").hidden = mode !== "forecast"; $("pcActual").hidden = mode !== "actual";
-    $("pcIntro").textContent = mode === "budget" ? "What this pay was given on Monthly planning, and the transfers to make when it lands. Lines with nothing typed in yet show the suggested amount (marked “suggested”)." : mode === "forecast" ? "Your adjusted plan for this pay: enter what actually came in and rebalance the lines to $0 left." : "What's actually happened since this pay landed, against the forecast.";
+    $("pcIntro").textContent = mode === "budget" ? "What to do with this pay: the transfers into each saver and whether they’ve happened yet. Amounts come from Monthly planning; lines with nothing typed in show the suggested amount (marked “suggested”)." : mode === "forecast" ? "Your adjusted plan for this pay: enter what actually came in and rebalance the lines to $0 left." : "What's actually happened since this pay landed, against the forecast.";
     if (mode === "forecast") renderForecast(); if (mode === "actual") renderActual();
   }
   for (const b of document.querySelectorAll("[data-pcmode]")) b.addEventListener("click", () => setPcMode(b.dataset.pcmode));
@@ -2392,6 +2416,7 @@
     if (db) db.collection("loans").onSnapshot((snap) => { LN.items = {}; for (const d of snap.docs) LN.items[d.id] = dd(d); renderLoans(); if (!$("bdTable").contains(document.activeElement)) renderBudget(); }, () => {});
     if (db) db.collection("billMatches").onSnapshot((snap) => { BM.items = {}; for (const d of snap.docs) BM.items[d.id] = dd(d); renderBillMatch(); if (!$("bdTable").contains(document.activeElement)) renderBudget(); }, () => {});
     if (db) db.collection("forecast").onSnapshot((snap) => { FC.items = {}; for (const d of snap.docs) FC.items[d.id] = dd(d); if (!$("view-paycheck").hidden && !$("fcBody").contains(document.activeElement) && document.activeElement !== $("fcIncome")) setPcMode(FC.mode); }, () => {});
+    if (db) db.collection("actions").onSnapshot((snap) => { ACT.items = {}; for (const d of snap.docs) ACT.items[d.id] = dd(d); renderPaycheck(); }, () => {});
     if (db) db.collection("budget").onSnapshot((snap) => { for (const d of snap.docs) if (!BUD.dirty[d.id]) BUD.months[d.id] = dd(d).alloc || {}; if (!$("bdTable").contains(document.activeElement)) renderBudget(); }, () => {});
     if (db) db.collection("tags").onSnapshot((snap) => { newTags = {}; for (const d of snap.docs) newTags[d.id] = dd(d); fillTagControls(); renderEverything(); }, () => {});
     renderEverything();
