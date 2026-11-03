@@ -243,6 +243,19 @@
   .loanpick { display: flex; flex-wrap: wrap; gap: 6px; }
   .loanpick .chip { background: var(--raised); border-color: var(--hairline); color: var(--ink); font-weight: 500; }
   .loanpick .chip[aria-pressed="true"] { background: var(--cobalt); border-color: var(--cobalt); color: var(--raised); }
+  .fcsteps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 13px; color: var(--muted); }
+  .fcsteps b { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--cobalt-tint); color: var(--cobalt); font-size: 12px; margin-right: 6px; }
+  .fcbar { position: sticky; top: 0; z-index: 2; background: var(--raised); padding: 10px 0; display: grid; gap: 6px; }
+  .fcbar .meter { height: 10px; border-radius: 5px; background: var(--hairline); overflow: hidden; display: flex; }
+  .fcbar .meter i { display: block; height: 100%; }
+  .fcbar .row { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 13px; }
+  .fcbal { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; margin-bottom: 10px; border-radius: var(--r-sm); background: var(--cobalt-tint); font-size: 13px; }
+  .fcbal select, .fcadd select { font: inherit; font-size: 13px; height: 30px; border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--raised); color: var(--ink); max-width: 16rem; }
+  .fcadd { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+  .fctable tr.sub td { font-weight: 600; background: var(--surface); }
+  .fctable tr.sub button { font: inherit; font-weight: 600; background: none; border: 0; padding: 0; cursor: pointer; color: var(--ink); }
+  .fctable tr.grp2 td { font-size: 12px; color: var(--muted); font-weight: 600; padding-top: 8px; }
+  .fctable tr.changed td:first-child { box-shadow: inset 3px 0 0 var(--coral); }
   .check { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: var(--ink); cursor: pointer; margin-top: 12px; }
   .check input { width: 16px; height: 16px; margin: 0; accent-color: var(--cobalt); }
   .sumtable td, .sumtable th { padding: 6px 8px; }
@@ -541,8 +554,12 @@
         <div class="tile"><p class="label">Left to allocate</p><span class="stat" id="fcLeft">—</span><p class="small muted" id="fcLeftSub">Aim for $0: every dollar has a job</p></div>
       </div>
       <div class="card">
-        <div class="card-head"><div><h2>Forecast for this pay</h2><p class="note">Starts from the budget. Enter what the pay actually came to, then move money between lines until Left to allocate is $0. Changes save as you go and don't change Monthly planning.</p></div><button class="btn ghost" type="button" id="fcReset">Reset to budget</button></div>
-        <div class="tablebox" style="max-height:none"><table><thead><tr><th>Line</th><th class="n">Budget</th><th class="n" style="width:8rem">Forecast</th><th class="n">Change</th></tr></thead><tbody id="fcBody"></tbody></table></div>
+        <ol class="fcsteps"><li><b>1</b> Enter what the pay came to (top left)</li><li><b>2</b> Change what each line gets</li><li><b>3</b> Get "Left to allocate" to $0</li></ol>
+        <div class="card-head" style="margin-top:12px"><div><h2>Forecast for this pay</h2><p class="note">Each line starts at its budget. Only lines with money are shown; add others at the bottom. Changes save as you go and don't touch Monthly planning.</p></div><button class="btn ghost" type="button" id="fcReset">Reset to budget</button></div>
+        <div class="fcbar" id="fcBar"></div>
+        <div id="fcBalance" class="fcbal" hidden></div>
+        <div class="tablebox" style="max-height:none"><table class="fctable"><thead><tr><th>Line</th><th class="n">Budget</th><th class="n" style="width:8.5rem">Forecast</th><th class="n">Change</th><th style="width:2.5rem"></th></tr></thead><tbody id="fcBody"></tbody></table></div>
+        <div class="fcadd"><select id="fcAddSel" aria-label="Add a line to the forecast"></select><button class="btn ghost csv" type="button" id="fcAddBtn">Add line</button></div>
         <p class="small muted" id="fcMsg"></p>
       </div>
     </div>
@@ -2248,30 +2265,67 @@
     FC.items[id] = data; clearTimeout(FC.timer); $("fcMsg").textContent = "Saving…"; const gen = ++FC.gen;
     FC.timer = setTimeout(async () => { try { await db.doc("forecast/" + id).set(data); if (gen === FC.gen) $("fcMsg").textContent = "Saved."; } catch (e) { $("fcMsg").textContent = "That change wasn't saved. Try again in a moment."; } }, 600);
   }
+  // Forecast lines are grouped into Savers, Bills and Spending (spending sub-grouped by Up parent category).
+  const fcGroup = (l) => l.sec === "Savers" ? ["Savers", ""] : l.sec === "Bills" ? ["Bills", ""] : ["Spending", l.sec.replace("Spending · ", "")];
+  const fcShown = (c, f, l) => l.budget > 0 || (f.lines[l.key] != null);
+  FC.open = FC.open || {};
   function renderForecast() {
     const c = pcContext(); if (!c) return; const f = fcGet(c), body = $("fcBody"); body.replaceChildren();
     if (document.activeElement !== $("fcIncome")) $("fcIncome").value = f.income;
-    $("fcIncome").disabled = !canWrite; $("fcReset").disabled = !canWrite;
+    $("fcIncome").disabled = !canWrite; $("fcReset").disabled = !canWrite; $("fcAddBtn").disabled = !canWrite;
     $("fcIncomeSub").textContent = "Budgeted " + money(c.pay.net) + " · " + c.pay.label + ", " + wdfmt(c.pay.date);
-    let sec = null; const refs = [];
-    for (const l of c.lines) {
-      const fv = fcVal(c, f, l); if (!l.budget && !fv && !l.sec.startsWith("Spending")) continue;
-      if (l.sec !== sec) { sec = l.sec; body.append(el("tr", { className: "sec" }, [el("td", { colSpan: 4, textContent: sec, style: "font-weight:600;background:var(--surface)" })])); }
-      const inp = el("input", { type: "number", min: "0", step: "0.01", inputMode: "decimal", value: fv || "" , placeholder: "0" }); Object.assign(inp.style, { width: "7rem", textAlign: "right", font: "inherit", fontSize: "13px", border: "1px solid var(--hairline)", borderRadius: "var(--r-sm)", padding: "4px 6px" }); inp.disabled = !canWrite; inp.setAttribute("aria-label", "Forecast for " + l.label);
-      const ch = el("td", { className: "n num" });
-      const upd = () => { const d = r2((Number(inp.value) || 0) - l.budget); ch.textContent = d ? (d > 0 ? "+" : "") + money(d) : ""; ch.className = "n num " + (d > 0 ? "status-bad" : d < 0 ? "status-good" : ""); };
-      inp.addEventListener("input", () => { const ff = fcGet(c); ff.lines = { ...ff.lines, [l.key]: inp.value === "" ? 0 : Number(inp.value) }; fcSave(c, ff); upd(); fcTotals(c); });
-      upd(); refs.push(inp);
-      body.append(el("tr", {}, [el("td", { textContent: l.label }), el("td", { className: "n num muted", textContent: l.budget ? money(l.budget) : "" }), el("td", { className: "n" }, [inp]), ch]));
+    const shown = c.lines.filter((l) => fcShown(c, f, l)), hidden = c.lines.filter((l) => !fcShown(c, f, l));
+    FC.refs = [];
+    for (const top of ["Savers", "Bills", "Spending"]) {
+      const ls = shown.filter((l) => fcGroup(l)[0] === top); if (!ls.length) continue;
+      const open = FC.open[top] !== false, bt = el("button", { type: "button", textContent: (open ? "▾ " : "▸ ") + top }); bt.setAttribute("aria-expanded", String(open));
+      bt.addEventListener("click", () => { FC.open[top] = !open; renderForecast(); });
+      const bTot = el("td", { className: "n num" }), fTot = el("td", { className: "n num" }), cTot = el("td", { className: "n num" });
+      body.append(el("tr", { className: "sub" }, [el("td", {}, [bt]), bTot, fTot, cTot, el("td")])); FC.refs.push({ ls, bTot, fTot, cTot });
+      if (!open) continue;
+      let g2 = null;
+      for (const l of ls) {
+        const sub = fcGroup(l)[1]; if (sub && sub !== g2) { g2 = sub; body.append(el("tr", { className: "grp2" }, [el("td", { colSpan: 5, textContent: sub })])); }
+        const fv = fcVal(c, f, l), inp = el("input", { type: "number", min: "0", step: "1", inputMode: "decimal", value: fv || "", placeholder: "0" });
+        Object.assign(inp.style, { width: "7.5rem", textAlign: "right", font: "inherit", fontSize: "14px", border: "1px solid var(--hairline)", borderRadius: "var(--r-sm)", padding: "5px 8px" }); inp.disabled = !canWrite; inp.setAttribute("aria-label", "Forecast for " + l.label);
+        const ch = el("td", { className: "n num" }), undo = el("button", { type: "button", className: "rowbtn", textContent: "↺", title: "Back to budget" }), tr = el("tr", {});
+        const upd = () => { const d = r2((Number(inp.value) || 0) - l.budget); ch.textContent = d ? signed(d) : ""; ch.className = "n num " + (d > 0 ? "status-bad" : d < 0 ? "status-good" : ""); undo.hidden = !d; tr.classList.toggle("changed", !!d); };
+        inp.addEventListener("input", () => { const ff = fcGet(c); ff.lines = { ...ff.lines, [l.key]: inp.value === "" ? 0 : Number(inp.value) }; fcSave(c, ff); upd(); fcTotals(c); });
+        undo.addEventListener("click", () => { const ff = fcGet(c); const n = { ...ff.lines }; if (l.budget > 0) delete n[l.key]; else n[l.key] = 0; ff.lines = n; fcSave(c, ff); renderForecast(); });
+        upd(); undo.disabled = !canWrite;
+        tr.append(el("td", { textContent: l.label, style: sub ? "padding-left:20px" : "" }), el("td", { className: "n num muted", textContent: l.budget ? money(l.budget) : "—" }), el("td", { className: "n" }, [inp]), ch, el("td", {}, [undo]));
+        body.append(tr);
+      }
     }
+    if (!shown.length) body.append(el("tr", {}, [el("td", { colSpan: 5, className: "empty", textContent: "Nothing budgeted from this pay yet. Add lines below, or fill this pay in on Monthly planning." })]));
+    const sel = $("fcAddSel"); sel.replaceChildren(el("option", { value: "", textContent: hidden.length ? "Add a line…" : "Every line is already shown" }));
+    for (const top of ["Savers", "Bills", "Spending"]) { const hs = hidden.filter((l) => fcGroup(l)[0] === top); if (!hs.length) continue; const og = el("optgroup", { label: top }); og.append(...hs.map((l) => el("option", { value: l.key, textContent: (fcGroup(l)[1] ? fcGroup(l)[1] + " · " : "") + l.label }))); sel.append(og); }
+    sel.disabled = !hidden.length || !canWrite;
     fcTotals(c);
   }
   function fcTotals(c) {
-    const f = fcGet(c), tot = r2(c.lines.reduce((s, l) => s + fcVal(c, f, l), 0)), left = r2(f.income - tot);
+    const f = fcGet(c), tot = r2(c.lines.reduce((s, l) => s + fcVal(c, f, l), 0)), left = r2(f.income - tot), zero = Math.abs(left) < 0.005;
     $("fcAlloc").textContent = money(tot, 0); $("fcAllocSub").textContent = "Budget was " + money(c.budgetTotal, 0);
-    $("fcLeft").textContent = money(left); $("fcLeft").classList.toggle("neg", Math.abs(left) >= 0.005); $("fcLeft").classList.toggle("status-good", Math.abs(left) < 0.005);
-    $("fcLeftSub").textContent = Math.abs(left) < 0.005 ? "Every dollar has a job" : left > 0 ? "Give this to a line until it's $0" : "Over-allocated: take this off a line";
+    $("fcLeft").textContent = signed(left); $("fcLeft").classList.toggle("neg", !zero && left < 0); $("fcLeft").classList.toggle("status-good", zero);
+    $("fcLeftSub").textContent = zero ? "Every dollar has a job ✓" : left > 0 ? "Not given a job yet: add it to a line" : "Planned more than the pay: take it off a line";
+    for (const r of FC.refs || []) { const b = r2(r.ls.reduce((s, l) => s + l.budget, 0)), fv = r2(r.ls.reduce((s, l) => s + fcVal(c, f, l), 0)), d = r2(fv - b); r.bTot.textContent = money(b); r.fTot.textContent = money(fv); r.cTot.textContent = d ? signed(d) : ""; r.cTot.className = "n num " + (d > 0 ? "status-bad" : d < 0 ? "status-good" : ""); }
+    // Balance bar: how much of the pay is planned.
+    const pct = f.income > 0 ? Math.min(100, tot / f.income * 100) : 0, over = tot > f.income + 0.005;
+    $("fcBar").replaceChildren(el("div", { className: "row" }, [el("span", { textContent: "Planned " + money(tot) + " of " + money(f.income) + " pay" }), el("strong", { className: zero ? "status-good" : over ? "status-bad" : "", textContent: zero ? "Balanced ✓" : over ? "Over by " + money(-left) : money(left) + " left to plan" })]),
+      el("div", { className: "meter" }, [el("i", { style: `width:${pct}%;background:${over ? "var(--negative)" : zero ? "var(--positive)" : "var(--cobalt)"}` })]));
+    // One-click balance: put the difference on a line.
+    const bal = $("fcBalance"); bal.hidden = zero || !canWrite; bal.replaceChildren();
+    if (!zero) {
+      const opts = c.lines.filter((l) => fcShown(c, f, l)), s2 = el("select", {}, opts.map((l) => el("option", { value: l.key, textContent: l.label + " (" + money(fcVal(c, f, l)) + ")" })));
+      s2.setAttribute("aria-label", "Line to balance with");
+      const bySize = (L) => L.slice().sort((a, b) => fcVal(c, f, b) - fcVal(c, f, a))[0], spend = opts.filter((l) => fcGroup(l)[0] === "Spending");
+      const pick = left > 0 ? (opts.find((l) => l.sec === "Savers") || bySize(spend) || opts[0]) : (bySize(spend.filter((l) => fcVal(c, f, l) > 0)) || bySize(opts)); if (pick) s2.value = pick.key;
+      const go = el("button", { type: "button", className: "btn csv", textContent: left > 0 ? "Add " + money(left) : "Take off " + money(-left) });
+      go.addEventListener("click", () => { const l = opts.find((x) => x.key === s2.value); if (!l) return; const ff = fcGet(c), nv = r2(Math.max(0, fcVal(c, ff, l) + left)); ff.lines = { ...ff.lines, [l.key]: nv }; fcSave(c, ff); renderForecast(); });
+      bal.append(el("span", { textContent: left > 0 ? "Balance it: give the " + money(left) + " left to" : "Balance it: take the " + money(-left) + " over off" }), s2, go);
+    }
   }
+  $("fcAddBtn").addEventListener("click", () => { const c = pcContext(), k = $("fcAddSel").value; if (!c || !k) return; const ff = fcGet(c); ff.lines = { ...ff.lines, [k]: 0 }; fcSave(c, ff); renderForecast(); setTimeout(() => { const inp = [...$("fcBody").querySelectorAll("input")].find((i) => i.getAttribute("aria-label") === "Forecast for " + (c.lines.find((l) => l.key === k) || {}).label); if (inp) inp.focus(); }, 30); });
   // Actuals: what happened between this pay and the next one.
   function actualFor(c, l) {
     const inPer = (t) => t.date >= c.pay.date && t.date <= c.end;
