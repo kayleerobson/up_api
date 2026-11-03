@@ -2195,7 +2195,8 @@
     $("pcLeft").textContent = money(r2(pay.net - total), 0); $("pcLeft").classList.toggle("neg", pay.net - total < 0);
     $("pcLeftSub").textContent = money(pay.net, 0) + " take-home − " + money(total, 0) + " allocated" + (sugTotal ? " (" + money(sugTotal, 0) + " more suggested)" : "");
     const amtCell = (a) => el("td", { className: "n num" + (a.sug ? " muted" : ""), textContent: money(a.v) + (a.sug ? " suggested" : "") });
-    const order = Object.keys(moves).sort((a, b) => (a === STAYS ? 1 : 0) - (b === STAYS ? 1 : 0) || moves[b].v - moves[a].v);
+    // Spending stays in 2Up Spending, so it isn't a transfer and isn't listed (it still counts towards Left over).
+    const order = Object.keys(moves).filter((d) => d !== STAYS).sort((a, b) => moves[b].v - moves[a].v);
     PC.rows = order.map((d) => [d, moves[d].v, moves[d].what.join(", ")]);
     // A short summary of what a transfer covers, e.g. "Savings", "3 bills", "12 spending categories".
     const covers = (d, o) => { const b = o.kinds.bill, sv = o.kinds.save, sp = o.kinds.spend, n = (k, one, many) => k + " " + (k === 1 ? one : many);
