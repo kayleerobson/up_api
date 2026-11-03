@@ -510,7 +510,7 @@
 
   <section id="view-loans" aria-labelledby="pageTitle" class="stack" hidden>
     <div class="card">
-      <div class="card-head"><div><h2>Your loans</h2><p class="note">Add each loan with today's balance, interest rate and repayment. The projection works out when it's paid off and how much interest you'll pay, and what extra repayments save. It's an estimate: interest is charged each repayment at the yearly rate divided by the number of repayments a year, with no fees and the rate staying the same. Changes show straight away; press Save loan to keep them.</p></div></div>
+      <div class="card-head"><div><h2>Your loans</h2><p class="note">Add each loan with today's balance, interest rate and repayment. The projection works out when it's paid off and how much interest you'll pay, and what extra repayments save. It's an estimate: interest is charged each repayment at the yearly rate divided by the number of repayments a year, with no fees and the rate staying the same. Changes show straight away; press Save loan to keep them. Saved loans appear in the Budget tab's bills with their repayment.</p></div></div>
       <div class="loanpick" id="lPick" role="group" aria-label="Loans"></div>
       <div class="billform" style="margin-top:12px">
         <div class="field"><label class="label" for="lName">Loan</label><input id="lName" type="text" maxlength="60" placeholder="e.g. Mortgage"></div>
@@ -1653,7 +1653,7 @@
   const isSaver = (a) => !!a && balances.some((b) => b.kind === "Saver" && b.account === a);
   function budgetRows(m) {
     const pays = budgetPays(m), last = lastMonthSpend(m), jaiPays = pays.filter((p) => p.jai), kay = pays.find((p) => p.key === "kaylee");
-    const billRows = Object.entries(bills).map(([id, b]) => ({ id, ...b })).filter((b) => isActive(b) || billDueIn(b, m).length).sort((a, b) => a.name.localeCompare(b.name)).map((b) => {
+    const billRows = [...Object.entries(bills).map(([id, b]) => ({ id, ...b })), ...loanBills()].filter((b) => isActive(b) || billDueIn(b, m).length).sort((a, b) => a.name.localeCompare(b.name)).map((b) => {
       const due = billMonthAmt(b, m), plan = billPlan(b, m), sug = plan.per;
       const how = !plan.detail.length ? "nothing to set aside this month" : b.mode === "due" ? plan.detail.slice(0, 2).map((x) => x.late ? "all of " + dfmt(x.due) + "'s payment on the next pay (due before it)" : money(Number(b.amount)) + " from Jai's " + dfmt(x.on) + " pay for " + dfmt(x.due)).join("; ") + (plan.detail.length > 2 ? "; …" : "")
         : plan.detail.every((x) => x.weeks === 1 && !x.late) && plan.detail.length ? "set aside the Wednesday before each payment"
@@ -1780,7 +1780,18 @@
     const a = allocOf(m), keep = a[row.key] && a[row.key].kaylee != null ? { kaylee: a[row.key].kaylee } : {};
     a[row.key] = keep; for (const [pk, v] of Object.entries(row.sug)) if (v > 0) a[row.key][pk] = v;
   }
+  // Saved loans show in the Budget's bills as their repayment (repayment + extra), paid on the loan's repayment dates.
+  // Their saver, category and set-aside choice are stored on the loan itself.
+  function loanBills() {
+    return Object.entries(LN.items).filter(([, L]) => Number(L.payment) > 0 && L.next).map(([id, L]) => ({ id: "loan~" + id, loanId: id, name: L.name || "Loan", from: "Loan repayment", amount: r2((Number(L.payment) || 0) + (Number(L.extra) || 0)),
+      freq: { 52: "weekly", 26: "fortnightly", 12: "monthly" }[L.perYear] || "monthly", start: L.next, due: L.next, end: null, account: L.account || "", category: L.category || null, mode: L.mode || "weekly" }));
+  }
   async function saveBillOpt(id, patch) {
+    if (id.startsWith("loan~")) {
+      const lid = id.slice(5); if (!db || !canWrite || !LN.items[lid]) return;
+      try { await db.doc("loans/" + lid).set({ ...LN.items[lid], ...patch, updatedAt: new Date().toISOString() }); $("bdMsg").textContent = "Saved."; } catch (e) { $("bdMsg").textContent = "That change wasn't saved. Try again in a moment."; }
+      return;
+    }
     if (!db || !canWrite || !bills[id]) return;
     try { await db.doc("bills/" + id).set({ ...bills[id], ...patch, updatedAt: new Date().toISOString() }); $("bdMsg").textContent = "Saved."; } catch (e) { $("bdMsg").textContent = "That change wasn't saved. Try again in a moment."; }
   }
@@ -1930,14 +1941,14 @@
     out.replaceChildren(el("strong", { className: "num", textContent: money(Math.ceil(pay * 100) / 100) + " a " + per }), " over " + n + " repayments" + (diff > 0 ? " · " + money(diff) + " more than you pay now" : diff < 0 ? " · you're already ahead of this" : ""));
   }
   function loanMsg(t, bad) { const m = $("lMsg"); m.textContent = t; m.className = "small " + (bad ? "status-bad" : "muted"); m.hidden = !t; }
-  for (const id of ["lName", "lBal", "lRate", "lFreq", "lPay", "lExtra", "lLump", "lNext"]) $(id).addEventListener("input", loanProject);
+  for (const id of ["lName", "lBal", "lRate", "lFreq", "lPay", "lExtra", "lLump", "lNext"]) $(id).addEventListener("input", () => { loanProject(); if (canWrite) loanMsg(LN.sel ? "Unsaved changes. Press Save loan to keep them." : "Not saved yet. Press Save loan to keep this loan and add its repayments to the Budget.", true); });
   $("lBy").addEventListener("input", loanBy);
   $("lNew").addEventListener("click", () => { LN.sel = null; LN.editingNew = true; fillLoanForm({ perYear: 12 }); loanMsg(""); renderLoans(); $("lName").focus(); });
   $("lSave").addEventListener("click", async () => {
     if (!db || !canWrite) { loanMsg("Only editors can save loans.", true); return; }
     const L = loanFromForm(); if (!L.name) { loanMsg("Give the loan a name.", true); $("lName").focus(); return; }
     if (!(L.balance > 0)) { loanMsg("Enter the balance today.", true); $("lBal").focus(); return; }
-    const data = { ...L, updatedAt: new Date().toISOString() }; $("lSave").disabled = true;
+    const prev = LN.sel ? LN.items[LN.sel] || {} : {}, data = { account: prev.account || "", category: prev.category || null, mode: prev.mode || "weekly", ...L, updatedAt: new Date().toISOString() }; $("lSave").disabled = true;
     try { if (LN.sel) await db.doc("loans/" + LN.sel).set(data); else { const id = "l-" + Date.now().toString(36); await db.doc("loans/" + id).set(data); LN.sel = id; LN.items[id] = data; } LN.editingNew = false; loanMsg("Saved " + L.name + ".", false); renderLoans(); }
     catch (e) { loanMsg("The loan wasn't saved. Try again in a moment.", true); } finally { $("lSave").disabled = !canWrite; }
   });
@@ -2032,7 +2043,7 @@
     if (db) db.collection("bills").onSnapshot((snap) => { bills = {}; for (const d of snap.docs) bills[d.id] = dd(d); renderBills(); renderBudget(); }, () => {});
     if (db) db.collection("saverGoals").onSnapshot((snap) => { for (const k of Object.keys(SAVERS)) delete SAVERS[k]; for (const d of snap.docs) SAVERS[d.id] = dd(d); if (!$("bdTable").contains(document.activeElement)) renderBudget(); }, () => {});
     if (db) db.collection("christmas").onSnapshot((snap) => { const keep = {}; for (const id of Object.keys(XM.pending || {})) if (XM.items[id]) keep[id] = XM.items[id]; XM.items = {}; for (const d of snap.docs) XM.items[d.id] = keep[d.id] || dd(d); if (!$("xBody").contains(document.activeElement)) renderXmas(); else xmasTotals(); }, () => {});
-    if (db) db.collection("loans").onSnapshot((snap) => { LN.items = {}; for (const d of snap.docs) LN.items[d.id] = dd(d); renderLoans(); }, () => {});
+    if (db) db.collection("loans").onSnapshot((snap) => { LN.items = {}; for (const d of snap.docs) LN.items[d.id] = dd(d); renderLoans(); if (!$("bdTable").contains(document.activeElement)) renderBudget(); }, () => {});
     if (db) db.collection("budget").onSnapshot((snap) => { for (const d of snap.docs) if (!BUD.dirty[d.id]) BUD.months[d.id] = dd(d).alloc || {}; if (!$("bdTable").contains(document.activeElement)) renderBudget(); }, () => {});
     if (db) db.collection("tags").onSnapshot((snap) => { newTags = {}; for (const d of snap.docs) newTags[d.id] = dd(d); fillTagControls(); renderEverything(); }, () => {});
     renderEverything();
