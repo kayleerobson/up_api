@@ -1674,9 +1674,9 @@
   }
   function queueBudgetSave(m) {
     if (!db || !canWrite) return;
-    BUD.dirty[m] = true; clearTimeout(BUD.timer); $("bdMsg").textContent = "Saving…";
+    BUD.dirty[m] = true; clearTimeout(BUD.timer); $("bdMsg").textContent = "Saving…"; BUD.gen = (BUD.gen || 0) + 1; const gen = BUD.gen;
     BUD.timer = setTimeout(async () => {
-      try { await db.doc("budget/" + m).set({ alloc: allocOf(m), updatedAt: new Date().toISOString() }); BUD.dirty[m] = false; $("bdMsg").textContent = "Saved."; }
+      try { await db.doc("budget/" + m).set({ alloc: allocOf(m), updatedAt: new Date().toISOString() }); if (BUD.gen === gen) { BUD.dirty[m] = false; $("bdMsg").textContent = "Saved."; } }
       catch (e) { $("bdMsg").textContent = e && e.code === "quota_exceeded" ? "The budget is too big to save. Clear an old month, then try again." : "That change wasn't saved. Try again in a moment."; }
     }, 700);
   }
@@ -1707,8 +1707,11 @@
   function xWedsLeft() { const end = xYear() + "-12-24", out = []; const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + ((3 - d.getDay() + 7) % 7)); while (iso(d) <= end) { out.push(iso(d)); d.setDate(d.getDate() + 7); } return out; }
   function xSave(id) {
     if (!db || !canWrite) return;
-    clearTimeout(XM.timers[id]); $("xMsg").textContent = "Saving…"; (XM.pending = XM.pending || {})[id] = true;
-    XM.timers[id] = setTimeout(async () => { try { await db.doc("christmas/" + id).set({ ...XM.items[id], updatedAt: new Date().toISOString() }); delete XM.pending[id]; $("xMsg").textContent = "Saved."; } catch (e) { delete XM.pending[id]; $("xMsg").textContent = "That change wasn't saved. Try again in a moment."; } }, 500);
+    // An item stays "pending" from the first keystroke until its latest change is saved, so a snapshot of an older save never overwrites newer typing.
+    clearTimeout(XM.timers[id]); $("xMsg").textContent = "Saving…"; XM.pending = XM.pending || {}; XM.gen = XM.gen || {};
+    const gen = (XM.gen[id] = (XM.gen[id] || 0) + 1); XM.pending[id] = true;
+    XM.timers[id] = setTimeout(async () => { const done = () => { if (XM.gen[id] === gen) delete XM.pending[id]; };
+      try { await db.doc("christmas/" + id).set({ ...XM.items[id], updatedAt: new Date().toISOString() }); done(); if (XM.gen[id] === gen) $("xMsg").textContent = "Saved."; } catch (e) { done(); $("xMsg").textContent = "That change wasn't saved. Try again in a moment."; } }, 500);
   }
   function renderXmas() {
     if ($("view-xmas").hidden) return;
