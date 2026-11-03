@@ -1443,18 +1443,36 @@
   const payAllowed = (rowKey, payKey) => rowKey.startsWith("saver_") || payKey !== "kaylee";
   const cellVal = (m, row, pay) => { if (!payAllowed(row, pay)) return null;  const r = allocOf(m)[row]; const v = r ? r[pay] : undefined; return v === undefined || v === null || v === "" ? null : Number(v); };
   // Net spending last month per Up subcategory, plus transfers to people and uncategorised spending.
+  // Which budget line a transaction counts towards (null when it isn't spending).
+  function budgetKey(t) {
+    if (t.internal) return null;
+    const e = eff(t);
+    if (e.id) return "cat_" + e.id;
+    if (t.amount >= 0) return null;
+    return classify(t).category === "Transfers" ? "other_transfers" : "other_uncat";
+  }
   function lastMonthSpend(m) {
     const pm = prevMonth(m), out = {};
-    for (const t of tx) {
-      if (t.month !== pm || t.internal) continue;
-      const k = classify(t);
-      let key = null;
-      const e = eff(t);
-      if (e.id) key = "cat_" + e.id; else if (t.amount < 0 && k.category === "Transfers") key = "other_transfers"; else if (t.amount < 0) key = "other_uncat";
-      if (key) out[key] = r2((out[key] || 0) - t.amount);
-    }
+    for (const t of tx) { if (t.month !== pm) continue; const key = budgetKey(t); if (key) out[key] = r2((out[key] || 0) - t.amount); }
     return out;
   }
+  // Pop-up of the transactions behind a "Last month" figure; keys is one line or every line in a group.
+  function openBudgetSpend(m, title, kicker, keys) {
+    const pm = prevMonth(m), set = new Set(keys);
+    const items = tx.filter((t) => t.month === pm && set.has(budgetKey(t))).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    const total = r2(-items.reduce((s, t) => s + t.amount, 0));
+    drawer.key = "budget|" + title; drawer.parentKey = ""; drawer.refresh = () => openBudgetSpend(m, title, kicker, keys);
+    const rows = items.map((t) => el("tr", {}, [el("td", { className: "num", textContent: dfmt(t.date) }), el("td", {}, [el("div", { className: "desc", textContent: t.description }), el("div", { className: "small muted", textContent: [eff(t).name, t.reference].filter(Boolean).join(" · ") })]), el("td", { textContent: t.spentBy }), el("td", { className: "n num" + (t.amount > 0 ? " in" : ""), textContent: money(-t.amount) })]));
+    setDrawer(title, kicker, monthName(pm) + " · " + money(total) + " across " + items.length + " transactions" + (items.some((t) => t.amount > 0) ? " (refunds shown as negative)" : "") + ".",
+      [{ label: "Date" }, { label: "Where / who" }, { label: "Spent by" }, { label: "Amount", n: 1 }], rows,
+      () => ["2up-budget-" + title.toLowerCase().replace(/[^a-z0-9]+/g, "-") + "-" + pm, ["Date", "Account", "Spent by", "Description", "Category", "Reference", "Amount"], items.map((t) => [t.date, t.account, t.spentBy, t.description, eff(t).name, t.reference, (-t.amount).toFixed(2)])], false);
+  }
+  const lastLink = (m, value, title, kicker, keys) => {
+    if (!value) return el("td", { className: "n num small muted", textContent: value === null ? "" : money(0) });
+    const b = el("button", { type: "button", className: "crumb num", textContent: money(value) }); b.setAttribute("aria-label", "See " + title + " transactions for " + monthName(prevMonth(m)));
+    b.addEventListener("click", () => openBudgetSpend(m, title, kicker, keys));
+    return el("td", { className: "n" }, [b]);
+  };
   const billDueIn = (b, m) => occurrences(b, m + "-01", m + "-31");
   const billMonthAmt = (b, m) => r2(billDueIn(b, m).length * (Number(b.amount) || 0));
   const billWeekly = (b) => r2((Number(b.amount) || 0) * (FREQ[b.freq] || FREQ.monthly).perYear / 52);
@@ -1501,7 +1519,7 @@
         const wk = el("input", { type: "checkbox", checked: !!row.bill.saveWeekly }); wk.disabled = !canWrite; wk.addEventListener("change", () => saveBillOpt(row.bill.id, { saveWeekly: wk.checked }));
         first.append(el("div", { className: "billopts" }, [el("label", {}, ["Category ", sel]), el("label", {}, [wk, " Save weekly from Jai's pays"])]));
       }
-      return el("tr", {}, [first, el("td", { className: "n num", textContent: row.last === null ? "" : money(row.last) }), ...cellInput(row), tot]); };
+      return el("tr", {}, [first, row.last === null ? el("td") : lastLink(m, row.last, row.label, "Spent last month", [row.key]), ...cellInput(row), tot]); };
     const section = (key, title, rows) => { const cells = R.pays.map((p) => { const td = el("td", { className: "n num" }); (bdRefs.secTot[key] = bdRefs.secTot[key] || {})[p.key] = td; return td; }); const tot = el("td", { className: "n num" }); bdRefs.secTot[key]._ = tot; const lastTot = rows.reduce((s, r) => s + (r.last || 0), 0);
       body.append(el("tr", { className: "sec" }, [el("td", { className: "stick", textContent: title }), el("td", { className: "n num", textContent: key === "spend" ? money(r2(lastTot)) : "" }), ...cells, tot])); };
     section("save", "Savers", R.saverRows);
@@ -1514,7 +1532,7 @@
       const open = BUD.open[g.name] !== false, btn = el("button", { type: "button", textContent: (open ? "▾ " : "▸ ") + g.name }); btn.setAttribute("aria-expanded", String(open));
       btn.addEventListener("click", () => { BUD.open[g.name] = !open; renderBudget(); });
       const gl = r2(g.rows.reduce((s, r) => s + (r.last || 0), 0)), gt = el("td", { className: "n num" }); (bdRefs.grand.groups = bdRefs.grand.groups || []).push([gt, g.rows]);
-      body.append(el("tr", { className: "grp" }, [el("td", { className: "stick" }, [btn]), el("td", { className: "n num", textContent: money(gl) }), el("td", { colSpan: R.pays.length }), gt]));
+      body.append(el("tr", { className: "grp" }, [el("td", { className: "stick" }, [btn]), lastLink(m, gl, g.name, "Spent last month", g.rows.map((r) => r.key)), el("td", { colSpan: R.pays.length }), gt]));
       if (open) for (const r of g.rows) body.append(line(r, true)); else all.push(...g.rows);
     }
     const foot = (label, key, cls) => { const cells = R.pays.map((p) => { const td = el("td", { className: "n num" }); (bdRefs[key])[p.key] = td; return td; }); const tot = el("td", { className: "n num" }); bdRefs[key]._ = tot; return el("tr", { className: "foot" }, [el("td", { className: "stick", textContent: label }), el("td"), ...cells, tot]); };
