@@ -258,6 +258,7 @@
     <div class="navsub" id="grp-transactions" hidden>
       <button class="navitem sub" id="tab-transactions" data-view="transactions" type="button">All transactions</button>
       <button class="navitem sub" id="tab-needs" data-view="needs" type="button">Transactions to categorise <span class="pill num" id="needsBadge">0</span></button>
+      <button class="navitem sub" id="tab-billmatch" data-view="billmatch" type="button">Match to bills <span class="pill num" id="bmBadge">0</span></button>
     </div>
     <button class="navgroup" type="button" aria-expanded="false" aria-controls="grp-budget" data-group="budget">Budget building</button>
     <div class="navsub" id="grp-budget" hidden>
@@ -472,6 +473,27 @@
         <div class="incbar"><button class="btn ghost" type="button" data-add="kaylee">Add line</button><button class="btn" type="button" data-calc="kaylee">Calculate</button><span class="small muted" id="iKayMsg"></span></div>
         <div id="iKayOut"></div>
       </div>
+    </div>
+  </section>
+
+  <section id="view-billmatch" aria-labelledby="pageTitle" class="stack" hidden>
+    <div class="tiles" aria-label="Bill matching">
+      <div class="tile"><p class="label">To confirm</p><span class="stat" id="bmTodo">—</span><p class="small muted" id="bmTodoSub">—</p></div>
+      <div class="tile"><p class="label">Confirmed this month</p><span class="stat" id="bmDone">—</span><p class="small muted" id="bmDoneSub">—</p></div>
+      <div class="tile"><p class="label">Bills not seen yet</p><span class="stat" id="bmMissing">—</span><p class="small muted" id="bmMissingSub">Due in the last 30 days with no payment matched</p></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div><h2>Suggested matches</h2><p class="note">Payments from the last 4 months that look like one of your bills: the name matches the bill or who it's paid to, the amount is within 15%, and the date is within 5 days of a due date. Nothing counts until you confirm it. Confirmed payments show against the bill on the Budget tab and are left out of spending, so they aren't counted twice.</p></div><button class="btn" type="button" id="bmAll">Confirm all</button></div>
+      <div class="tablebox"><table><thead><tr><th>Date</th><th>Where / who</th><th class="n">Amount</th><th>Bill</th><th>Why</th><th></th></tr></thead><tbody id="bmSug"></tbody></table></div>
+      <p class="small muted" id="bmMsg"></p>
+    </div>
+    <div class="card">
+      <div class="card-head"><div><h3>Match another payment</h3><p class="note">Outgoing payments from the last 4 months that aren't matched. Pick the bill and confirm.</p></div><input id="bmSearch" type="search" placeholder="Search where, reference or amount" aria-label="Search payments"></div>
+      <div class="tablebox short"><table><thead><tr><th>Date</th><th>Where / who</th><th class="n">Amount</th><th>Bill</th><th></th></tr></thead><tbody id="bmOther"></tbody></table></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div><h3>Confirmed</h3><p class="note">Most recent first. Undo puts the payment back into spending.</p></div></div>
+      <div class="tablebox short"><table><thead><tr><th>Date</th><th>Where / who</th><th class="n">Amount</th><th>Bill</th><th>For due date</th><th></th></tr></thead><tbody id="bmDoneBody"></tbody></table></div>
     </div>
   </section>
 
@@ -1245,7 +1267,7 @@
     else if (!staged) note.textContent = "Pick a category or tag. Nothing changes in Up until you press Send to Up.";
     else note.textContent = "Saved here. Press Send to Up when you're ready.";
   }
-  function renderEverything() { renderSync(); renderNeeds(); renderAll(); if (!$("view-overview").hidden) renderOverview(); }
+  function renderEverything() { renderSync(); renderNeeds(); renderAll(); renderBillMatch(); if (!$("view-overview").hidden) renderOverview(); }
   function showDbError(e) { const n = $("syncNote"); n.className = "small status-bad"; n.textContent = e && e.code === "quota_exceeded" ? "The change list is full. Send or clear changes, then try again." : "That change wasn't saved. Try again in a moment."; }
 
   async function send() {
@@ -1545,6 +1567,7 @@
   // Net spending last month per Up subcategory, plus transfers to people and uncategorised spending.
   // Which budget line a transaction counts towards (null when it isn't spending).
   function budgetKey(t) {
+    const bm = BM.items[t.id]; if (bm && bm.status === "confirmed" && bm.billId) return "bill_" + bm.billId;
     if (t.internal) return null;
     const e = eff(t);
     if (e.id) return "cat_" + e.id;
@@ -1629,13 +1652,15 @@
     const pays = budgetPays(m), last = lastMonthSpend(m), jaiPays = pays.filter((p) => p.jai), kay = pays.find((p) => p.key === "kaylee");
     const billRows = [...Object.entries(bills).map(([id, b]) => ({ id, ...b })), ...loanBills()].filter((b) => isActive(b) || billDueIn(b, m).length).sort((a, b) => a.name.localeCompare(b.name)).map((b) => {
       const due = billMonthAmt(b, m), plan = billPlan(b, m), sug = plan.per;
-      const how = !plan.detail.length ? "nothing to set aside this month" : b.mode === "due" ? plan.detail.slice(0, 2).map((x) => x.late ? "all of " + dfmt(x.due) + "'s payment on the next pay (due before it)" : money(Number(b.amount)) + " from Jai's " + dfmt(x.on) + " pay for " + dfmt(x.due)).join("; ") + (plan.detail.length > 2 ? "; …" : "")
+      let how = !plan.detail.length ? "nothing to set aside this month" : b.mode === "due" ? plan.detail.slice(0, 2).map((x) => x.late ? "all of " + dfmt(x.due) + "'s payment on the next pay (due before it)" : money(Number(b.amount)) + " from Jai's " + dfmt(x.on) + " pay for " + dfmt(x.due)).join("; ") + (plan.detail.length > 2 ? "; …" : "")
         : plan.detail.every((x) => x.weeks === 1 && !x.late) && plan.detail.length ? "set aside the Wednesday before each payment"
         : plan.detail.slice(0, 2).map((x) => x.late ? "all of " + dfmt(x.due) + "'s payment on the next pay (due before it)" : money(x.each) + "/week × " + x.weeks + " for " + dfmt(x.due)).join("; ") + (plan.detail.length > 2 ? "; …" : "");
       const next = occurrences(b, m + "-01" > todayISO() ? m + "-01" : todayISO(), "2100-12-31")[0] || "";
-      return { key: "bill_" + b.id, kind: "bill", bill: b, label: b.name, saver: isSaver(b.account) ? b.account : "", next, head: money(Number(b.amount)) + " " + freqLabel(b).toLowerCase() + (next ? " · due " + dfmt(next) : ""), sub: [b.from, how].filter(Boolean).join(" · "), last: null, sug };
+      const paidNow = tx.filter((t) => t.month === m && BM.items[t.id] && BM.items[t.id].status === "confirmed" && BM.items[t.id].billId === b.id);
+      if (paidNow.length) how = how + (how ? " · " : "") + "paid ✓ " + paidNow.map((t) => dfmt(t.date)).join(", ");
+      return { key: "bill_" + b.id, kind: "bill", bill: b, label: b.name, saver: isSaver(b.account) ? b.account : "", next, head: money(Number(b.amount)) + " " + freqLabel(b).toLowerCase() + (next ? " · due " + dfmt(next) : ""), sub: [b.from, how].filter(Boolean).join(" · "), last: last["bill_" + b.id] || 0, sug };
     });
-    const mapped = {}; for (const r of billRows) if (r.bill.category) mapped[r.bill.category] = r2((mapped[r.bill.category] || 0) + billMonthAmt(r.bill, m));
+    const mapped = {}; for (const r of billRows) if (r.bill.category && !r.last) mapped[r.bill.category] = r2((mapped[r.bill.category] || 0) + billMonthAmt(r.bill, m));
     const groups = cats.map((p) => ({ name: p.name, rows: p.children.map((c) => { const lm = last["cat_" + c.id] || 0, sugAmt = Math.max(0, Math.round(lm - (mapped[c.id] || 0))); return { key: "cat_" + c.id, kind: "cat", label: c.name, sub: mapped[c.id] ? "Includes bills mapped here" : "", last: lm, sug: spread(sugAmt, jaiPays) }; }) }));
     groups.push({ name: "Other", rows: [["other_transfers", "Transfers to people"], ["other_uncat", "Uncategorised"]].map(([k, l]) => ({ key: k, kind: "cat", label: l, sub: "", last: last[k] || 0, sug: spread(Math.max(0, Math.round(last[k] || 0)), jaiPays) })) });
     const saverRows = balances.filter((b) => b.kind === "Saver" && saverType(b.account) === "savings").map((b) => { const g = saverPlan(b.account, m), billsHere = billRows.filter((r) => r.saver === b.account);
@@ -1686,7 +1711,7 @@
       }
       return el("tr", {}, [first, row.last === null ? el("td") : lastLink(m, row.last, row.label, "Spent last month", [row.key]), ...cellInput(row), tot]); };
     const section = (key, title, rows) => { const cells = R.pays.map((p) => { const td = el("td", { className: "n num" }); (bdRefs.secTot[key] = bdRefs.secTot[key] || {})[p.key] = td; return td; }); const tot = el("td", { className: "n num" }); bdRefs.secTot[key]._ = tot; const lastTot = rows.reduce((s, r) => s + (r.last || 0), 0);
-      body.append(el("tr", { className: "sec" }, [el("td", { className: "stick", textContent: title }), el("td", { className: "n num", textContent: key === "spend" ? money(r2(lastTot)) : "" }), ...cells, tot])); };
+      body.append(el("tr", { className: "sec" }, [el("td", { className: "stick", textContent: title }), el("td", { className: "n num", textContent: key === "spend" || key === "bills" ? money(r2(lastTot)) : "" }), ...cells, tot])); };
     section("save", "Savers", R.saverRows);
     { const sug = R.saverRows.reduce((s, r) => s + (r.sug.kaylee || 0), 0), kn = R.pays.find((p) => p.key === "kaylee").net; body.lastChild.firstChild.append(el("span", { className: "sub", textContent: sug ? "Suggested from Kaylee's pay: " + money(sug, 0) + (kn > 0 ? " of " + money(kn, 0) + " (" + Math.round(sug / kn * 100) + "%)" : "") : "Savings savers only. Set targets, save-by dates and which pays they save from on the Savers tab" })); }
     for (const r of R.saverRows) body.append(line(r));
@@ -1985,8 +2010,93 @@
     $("svMonth").textContent = money(r2(plans.reduce((s, p) => s + p.perMonth, 0)), 0); $("svMonthSub").textContent = "Across Savings savers in " + monthName(NOW_MONTH);
   }
 
+  // ---------- Match to bills ----------
+  // billMatches/<txId>: {billId, due, status: "confirmed" | "rejected"}. Suggestions are worked out on the page and stored only when confirmed or rejected.
+  const BM = { items: {}, search: "" };
+  const allBills = () => [...Object.entries(bills).map(([id, b]) => ({ id, ...b })), ...loanBills()];
+  const BM_STOP = new Set(["penrith", "city", "the", "pty", "ltd", "nsw", "australia", "aus", "and", "for", "bill", "loan", "minimum", "extra", "insurance", "kaylee", "jai", "phone", "gym", "council"]);
+  const nameTokens = (b) => [...new Set((b.name + " " + (b.from || "")).toLowerCase().split(/[^a-z0-9+]+/).filter((w) => w.length >= 3 && !BM_STOP.has(w)))];
+  // Due dates near a date, stepping back before the bill's start too (bills are usually entered from their next payment).
+  function dueNear(b, d, days) {
+    const f = FREQ[b.freq] || FREQ.monthly, out = [], lo = addDays(d, -days), hi = addDays(d, days);
+    if (!b.due) return out;
+    for (let n = -60; n <= 60; n++) { const x = f.step(b.due, n, b); if (!x) continue; if (b.end && x > b.end) break; if (x >= lo && x <= hi) out.push(x); if (x > hi) break; }
+    return out;
+  }
+  const bmWindow = () => addDays(todayISO(), -122);
+  const bmCandidates = () => tx.filter((t) => t.amount < 0 && !t.internal && t.date >= bmWindow());
+  function bmScore(t, b) {
+    const amt = Number(b.amount) || 0; if (!amt) return null;
+    const paid = -t.amount, diff = Math.abs(paid - amt) / amt; if (diff > 0.15) return null;
+    const hay = (t.description + " " + t.rawText + " " + t.reference).toLowerCase(), hits = nameTokens(b).filter((w) => hay.includes(w));
+    const dues = dueNear(b, t.date, 5); if (!dues.length) return null;
+    const due = dues.reduce((a, x) => Math.abs(daysBetween(x, t.date)) < Math.abs(daysBetween(a, t.date)) ? x : a), dd2 = Math.abs(daysBetween(due, t.date));
+    const exact = Math.abs(paid - amt) < 0.01, name = hits.length > 0;
+    if (!name && !(exact && (dd2 === 0 || (t.type === "Direct Debit" && dd2 <= 3)))) return null;
+    const score = (name ? 3 : 0) + (exact ? 2 : 1) + (dd2 <= 1 ? 2 : dd2 <= 3 ? 1 : 0);
+    const why = [name ? "name matches (" + hits.join(", ") + ")" : "", exact ? "same amount" : "amount within " + Math.round(diff * 100) + "%", dd2 === 0 ? "on the due date" : dd2 + " day" + (dd2 > 1 ? "s" : "") + " from due " + dfmt(due)].filter(Boolean).join(" · ");
+    return { t, b, due, score, why };
+  }
+  const daysBetween = (a, b) => Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000);
+  // Best match for each payment, each bill due date used once, highest scores first.
+  function bmSuggestions() {
+    const B = allBills(), taken = new Set(Object.values(BM.items).filter((x) => x.status === "confirmed").map((x) => x.billId + "|" + x.due)), out = [], usedTx = new Set();
+    const cands = [];
+    for (const t of bmCandidates()) { if (BM.items[t.id] && BM.items[t.id].status === "confirmed") continue; const rej = BM.items[t.id] && BM.items[t.id].status === "rejected" ? BM.items[t.id].rejected || [] : [];
+      for (const b of B) { if (rej.includes(b.id)) continue; const sc = bmScore(t, b); if (sc) cands.push(sc); } }
+    cands.sort((a, b) => b.score - a.score || Math.abs(daysBetween(a.due, a.t.date)) - Math.abs(daysBetween(b.due, b.t.date)));
+    for (const c of cands) { const k = c.b.id + "|" + c.due; if (usedTx.has(c.t.id) || taken.has(k)) continue; usedTx.add(c.t.id); taken.add(k); out.push(c); }
+    return out.sort((a, b) => b.t.date.localeCompare(a.t.date));
+  }
+  const billSelect = (val, label) => { const s = el("select", {}, [el("option", { value: "", textContent: "Choose a bill" }), ...allBills().sort((a, b) => a.name.localeCompare(b.name)).map((b) => el("option", { value: b.id, textContent: b.name + " · " + money(Number(b.amount)) }))]); s.value = val || ""; s.setAttribute("aria-label", label); s.disabled = !canWrite; Object.assign(s.style, { font: "inherit", fontSize: "13px", maxWidth: "15rem" }); return s; };
+  async function bmSet(writes, msg) {
+    if (!db || !canWrite) { $("bmMsg").textContent = "Only editors can confirm matches."; return; }
+    for (const [id, data] of writes) BM.items[id] = data; renderBillMatch();
+    try { for (const [id, data] of writes) await db.doc("billMatches/" + id).set({ ...data, updatedAt: new Date().toISOString() }); $("bmMsg").textContent = msg; }
+    catch (e) { $("bmMsg").textContent = e && e.code === "quota_exceeded" ? "There's no room to save more matches." : "That wasn't saved. Try again in a moment."; }
+  }
+  const confirmMatch = (t, billId) => { const b = allBills().find((x) => x.id === billId); if (!b) return; const dues = dueNear(b, t.date, 20); const due = dues.length ? dues.reduce((a, x) => Math.abs(daysBetween(x, t.date)) < Math.abs(daysBetween(a, t.date)) ? x : a) : t.date;
+    return [t.id, { billId, due, status: "confirmed", amount: -t.amount, date: t.date }]; };
+  const txRow = (t) => [el("td", { className: "num", textContent: dfmt(t.date) }), el("td", {}, [el("div", { className: "desc", textContent: t.description }), el("div", { className: "small muted", textContent: [t.reference, t.account].filter(Boolean).join(" · ") })]), el("td", { className: "n num", textContent: money(-t.amount) })];
+  function renderBillMatch() {
+    const sug = bmSuggestions();
+    $("bmBadge").textContent = sug.length; $("bmBadge").hidden = !sug.length;
+    if ($("view-billmatch").hidden) return;
+    const B = allBills(), byId = Object.fromEntries(B.map((b) => [b.id, b]));
+    // Suggestions
+    const body = $("bmSug"); body.replaceChildren();
+    for (const c of sug) {
+      const sel = billSelect(c.b.id, "Bill for " + c.t.description);
+      const ok = el("button", { type: "button", className: "btn csv", textContent: "Confirm" }); ok.disabled = !canWrite;
+      const no = el("button", { type: "button", className: "rowbtn danger", textContent: "Not a bill" }); no.disabled = !canWrite;
+      ok.addEventListener("click", () => { if (!sel.value) return; bmSet([confirmMatch(c.t, sel.value)], "Confirmed " + c.t.description + " as " + byId[sel.value].name + "."); });
+      no.addEventListener("click", () => { const prev = BM.items[c.t.id] || {}; bmSet([[c.t.id, { status: "rejected", rejected: [...new Set([...(prev.rejected || []), c.b.id])] }]], "Okay, " + c.t.description + " won't be suggested as " + c.b.name + " again."); });
+      body.append(el("tr", {}, [...txRow(c.t), el("td", {}, [sel]), el("td", { className: "small muted", textContent: c.why }), el("td", { style: "white-space:nowrap" }, [ok, " ", no])]));
+    }
+    if (!sug.length) body.append(el("tr", {}, [el("td", { colSpan: 6, className: "empty", textContent: allBills().length ? "Nothing to confirm. New payments will show here after the next data refresh." : "Add your bills on the Bills tab first." })]));
+    $("bmAll").disabled = !canWrite || !sug.length;
+    // Other payments
+    const q = BM.search.trim().toLowerCase(), sugIds = new Set(sug.map((c) => c.t.id));
+    const other = bmCandidates().filter((t) => !sugIds.has(t.id) && !(BM.items[t.id] && BM.items[t.id].status === "confirmed")).filter((t) => !q || (t.description + " " + t.reference + " " + t.rawText + " " + (-t.amount).toFixed(2)).toLowerCase().includes(q)).slice(0, 80);
+    $("bmOther").replaceChildren(...(other.length ? other.map((t) => { const sel = billSelect("", "Bill for " + t.description), ok = el("button", { type: "button", className: "btn ghost csv", textContent: "Confirm" }); ok.disabled = true; sel.addEventListener("change", () => { ok.disabled = !sel.value || !canWrite; });
+      ok.addEventListener("click", () => { if (sel.value) bmSet([confirmMatch(t, sel.value)], "Confirmed " + t.description + " as " + byId[sel.value].name + "."); }); return el("tr", {}, [...txRow(t), el("td", {}, [sel]), el("td", {}, [ok])]); }) : [el("tr", {}, [el("td", { colSpan: 5, className: "empty", textContent: q ? "No payments match that search." : "No other payments." })])]));
+    // Confirmed
+    const done = Object.entries(BM.items).filter(([, x]) => x.status === "confirmed").map(([id, x]) => ({ x, t: tx.find((t) => t.id === id) })).filter((r) => r.t).sort((a, b) => b.t.date.localeCompare(a.t.date));
+    $("bmDoneBody").replaceChildren(...(done.length ? done.map(({ x, t }) => { const u = el("button", { type: "button", className: "rowbtn", textContent: "Undo" }); u.disabled = !canWrite;
+      u.addEventListener("click", async () => { if (!db || !canWrite) return; delete BM.items[t.id]; renderBillMatch(); try { await db.doc("billMatches/" + t.id).delete(); $("bmMsg").textContent = "Undone."; } catch (e) { $("bmMsg").textContent = "That wasn't undone. Try again in a moment."; } });
+      return el("tr", {}, [...txRow(t), el("td", { textContent: (byId[x.billId] || {}).name || "Deleted bill" }), el("td", { className: "num", textContent: x.due ? dfmt(x.due) : "" }), el("td", {}, [u])]); }) : [el("tr", {}, [el("td", { colSpan: 6, className: "empty", textContent: "Nothing confirmed yet." })])]));
+    // Tiles
+    const todoAmt = r2(sug.reduce((s, c) => s - c.t.amount, 0)); $("bmTodo").textContent = sug.length; $("bmTodoSub").textContent = money(todoAmt) + " of payments";
+    const thisM = done.filter((r) => r.t.month === NOW_MONTH); $("bmDone").textContent = money(r2(thisM.reduce((s, r) => s - r.t.amount, 0)), 0); $("bmDoneSub").textContent = thisM.length + " payments in " + monthName(NOW_MONTH);
+    const confirmedKeys = new Set(done.map((r) => r.x.billId + "|" + r.x.due)), from = addDays(todayISO(), -30), missing = [];
+    for (const b of B) for (const d of dueNear(b, addDays(todayISO(), -15), 15)) if (d >= from && d <= todayISO() && (!b.start || d >= b.start) && !confirmedKeys.has(b.id + "|" + d) && !sug.some((c) => c.b.id === b.id && c.due === d)) missing.push(b.name + " (" + dfmt(d) + ")");
+    $("bmMissing").textContent = missing.length; $("bmMissingSub").textContent = missing.length ? missing.slice(0, 4).join(", ") + (missing.length > 4 ? "…" : "") : "Every bill due in the last 30 days has a payment";
+  }
+  $("bmAll").addEventListener("click", () => { const sug = bmSuggestions(); if (sug.length) bmSet(sug.map((c) => confirmMatch(c.t, c.b.id)), "Confirmed " + sug.length + " matches."); });
+  $("bmSearch").addEventListener("input", () => { BM.search = $("bmSearch").value; renderBillMatch(); });
+
   // ---------- Tabs ----------
-  const VIEWS = ["overview", "needs", "transactions", "bills", "income", "savers", "budget", "xmas", "loans"];
+  const VIEWS = ["overview", "needs", "transactions", "billmatch", "bills", "income", "savers", "budget", "xmas", "loans"];
   function show(v) {
     if (!VIEWS.includes(v)) v = "overview";
     for (const x of VIEWS) { if (x === v) $("tab-" + x).setAttribute("aria-current", "page"); else $("tab-" + x).removeAttribute("aria-current"); $("view-" + x).hidden = x !== v; }
@@ -1994,7 +2104,7 @@
     $("pageTitle").textContent = $("tab-" + v).firstChild.textContent.trim();
     if (narrow()) setSide(false);
     if (location.hash.slice(1) !== v) history.replaceState(null, "", "#" + v);
-    if (v === "overview") renderOverview(); else if (v === "needs") renderNeeds(); else if (v === "bills") { fillBillAccounts(); renderBills(); } else if (v === "income") renderIncome(); else if (v === "budget") renderBudget(); else if (v === "xmas") renderXmas(); else if (v === "loans") renderLoans(); else if (v === "savers") renderSavers(); else renderAll();
+    if (v === "overview") renderOverview(); else if (v === "needs") renderNeeds(); else if (v === "bills") { fillBillAccounts(); renderBills(); } else if (v === "income") renderIncome(); else if (v === "budget") renderBudget(); else if (v === "xmas") renderXmas(); else if (v === "loans") renderLoans(); else if (v === "savers") renderSavers(); else if (v === "billmatch") renderBillMatch(); else renderAll();
   }
   for (const b of document.querySelectorAll(".navitem")) b.addEventListener("click", () => show(b.dataset.view));
   // Menu groups open and close on click; the group holding the current page opens itself.
@@ -2065,10 +2175,11 @@
     }, () => { canWrite = false; renderEverything(); });
     if (db) db.collection("tagChanges").onSnapshot((snap) => { tagChanges = {}; for (const d of snap.docs) tagChanges[d.id] = dd(d); fillTagControls(); renderEverything(); }, () => {});
     if (db) db.collection("income").onSnapshot((snap) => { for (const d of snap.docs) if (INC[d.id] && !INC[d.id].dirty) { INC[d.id].items = (dd(d).items || []).map((x) => ({ ...x })); INC[d.id].weeks = {}; for (const [w, L] of Object.entries(dd(d).weeks || {})) INC[d.id].weeks[w] = copyItems(L); if (typeof dd(d).help === "boolean") INC[d.id].help = dd(d).help; INC[d.id].helpFixed = dd(d).helpFixed ?? ""; INC[d.id].calc = true; } renderIncome(); renderBudget(); }, () => {});
-    if (db) db.collection("bills").onSnapshot((snap) => { bills = {}; for (const d of snap.docs) bills[d.id] = dd(d); renderBills(); renderBudget(); }, () => {});
+    if (db) db.collection("bills").onSnapshot((snap) => { bills = {}; for (const d of snap.docs) bills[d.id] = dd(d); renderBills(); renderBudget(); renderBillMatch(); }, () => {});
     if (db) db.collection("saverGoals").onSnapshot((snap) => { for (const k of Object.keys(SAVERS)) delete SAVERS[k]; for (const d of snap.docs) SAVERS[d.id] = dd(d); if (!$("bdTable").contains(document.activeElement)) renderBudget(); if (!$("svBody").contains(document.activeElement)) renderSavers(); }, () => {});
     if (db) db.collection("christmas").onSnapshot((snap) => { const keep = {}; for (const id of Object.keys(XM.pending || {})) if (XM.items[id]) keep[id] = XM.items[id]; XM.items = {}; for (const d of snap.docs) XM.items[d.id] = keep[d.id] || dd(d); if (!$("xBody").contains(document.activeElement)) renderXmas(); else xmasTotals(); }, () => {});
     if (db) db.collection("loans").onSnapshot((snap) => { LN.items = {}; for (const d of snap.docs) LN.items[d.id] = dd(d); renderLoans(); if (!$("bdTable").contains(document.activeElement)) renderBudget(); }, () => {});
+    if (db) db.collection("billMatches").onSnapshot((snap) => { BM.items = {}; for (const d of snap.docs) BM.items[d.id] = dd(d); renderBillMatch(); if (!$("bdTable").contains(document.activeElement)) renderBudget(); }, () => {});
     if (db) db.collection("budget").onSnapshot((snap) => { for (const d of snap.docs) if (!BUD.dirty[d.id]) BUD.months[d.id] = dd(d).alloc || {}; if (!$("bdTable").contains(document.activeElement)) renderBudget(); }, () => {});
     if (db) db.collection("tags").onSnapshot((snap) => { newTags = {}; for (const d of snap.docs) newTags[d.id] = dd(d); fillTagControls(); renderEverything(); }, () => {});
     renderEverything();
