@@ -160,6 +160,15 @@
   .pie-legend .pc { color: var(--muted); }
   .drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 15; width: min(30rem, 100%); background: var(--raised); border-left: 1px solid var(--hairline); display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 12px;
     padding: calc(16px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) 16px; }
+  .drawer { box-sizing: border-box; grid-template-columns: minmax(0, 1fr); }
+  .drawer > * { min-width: 0; }
+  /* Phones: pop-ups take the whole screen. */
+  @media (max-width: 640px) {
+    .drawer { left: 0; right: 0; width: 100%; max-width: 100%; border-left: 0; z-index: 30; padding-left: max(16px, env(safe-area-inset-left, 0px)); }
+    .drawer .tablebox { max-height: none; }
+    .modal-back { padding: 0; align-items: stretch; }
+    .modal { width: 100%; max-width: none; min-height: 100%; border-radius: 0; border: 0; box-sizing: border-box; align-content: start; padding: calc(20px + env(safe-area-inset-top, 0px)) 16px calc(20px + env(safe-area-inset-bottom, 0px)); }
+  }
   .drawer-head { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
   .drawer .tablebox { max-height: none; }
   .x { font: inherit; font-size: 20px; line-height: 20px; background: none; border: 0; color: var(--muted); cursor: pointer; padding: 4px; }
