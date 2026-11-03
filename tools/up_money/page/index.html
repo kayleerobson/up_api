@@ -513,6 +513,8 @@
   const mfmt = (m, long) => new Date(m + "-01T00:00:00").toLocaleDateString("en-AU", long ? { month: "long", year: "numeric" } : { month: "short" });
   const r2 = (v) => Math.round(v * 100) / 100;
   const $ = (id) => document.getElementById(id);
+  // Database snapshots can hand back read-only objects; take a plain, editable copy before changing anything.
+  const dd = (d) => JSON.parse(JSON.stringify(d.data() || {}));
   const el = (tag, props = {}, kids = []) => { const e = document.createElement(tag); Object.assign(e, props); for (const k of kids) if (k !== null && k !== "") e.append(k); return e; };
   const svgEl = (tag, attrs = {}) => { const e = document.createElementNS("http://www.w3.org/2000/svg", tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); return e; };
 
@@ -1626,7 +1628,10 @@
         const sv = el("select", {}, [el("option", { value: "", textContent: "Choose a saver" }), ...balances.filter((b) => b.kind === "Saver").map((b) => el("option", { value: b.account, textContent: b.account }))]); sv.value = row.saver; sv.disabled = !canWrite; sv.setAttribute("aria-label", "Saver that pays " + row.label);
         if (!row.saver) sv.style.borderColor = "var(--coral)";
         sv.addEventListener("change", () => { if (sv.value) saveBillOpt(row.bill.id, { account: sv.value }); });
-        first.append(el("div", { className: "billopts" }, [el("label", {}, ["Paid from ", sv]), el("label", {}, ["Category ", sel])]));
+        const al = el("button", { type: "button", className: "btn ghost csv", textContent: "Allocate" }); al.disabled = !canWrite || !Object.keys(row.sug).length;
+        al.setAttribute("aria-label", "Allocate " + row.label + " across Jai's pays this month");
+        al.addEventListener("click", () => { const a = allocOf(m); a[row.key] = {}; for (const [pk, v] of Object.entries(row.sug)) if (v > 0) a[row.key][pk] = v; renderBudget(); queueBudgetSave(m); $("bdMsg").textContent = "Allocated " + row.label + ". Saving…"; });
+        first.append(el("div", { className: "billopts" }, [el("label", {}, ["Paid from ", sv]), el("label", {}, ["Category ", sel]), al]));
       }
       return el("tr", {}, [first, row.last === null ? el("td") : lastLink(m, row.last, row.label, "Spent last month", [row.key]), ...cellInput(row), tot]); };
     const section = (key, title, rows) => { const cells = R.pays.map((p) => { const td = el("td", { className: "n num" }); (bdRefs.secTot[key] = bdRefs.secTot[key] || {})[p.key] = td; return td; }); const tot = el("td", { className: "n num" }); bdRefs.secTot[key]._ = tot; const lastTot = rows.reduce((s, r) => s + (r.last || 0), 0);
@@ -1829,16 +1834,16 @@
     for (const btn of document.querySelectorAll("[data-csv]")) btn.hidden = !downloads;
     canWrite = !!db && (user ? await user.canEdit() : false);
     if (db) db.collection("changes").onSnapshot((snap) => {
-      changes = {}; for (const d of snap.docs) changes[d.id] = d.data();
+      changes = {}; for (const d of snap.docs) changes[d.id] = dd(d);
       fillFilters(); renderEverything();
     }, () => { canWrite = false; renderEverything(); });
-    if (db) db.collection("tagChanges").onSnapshot((snap) => { tagChanges = {}; for (const d of snap.docs) tagChanges[d.id] = d.data(); fillTagControls(); renderEverything(); }, () => {});
-    if (db) db.collection("income").onSnapshot((snap) => { for (const d of snap.docs) if (INC[d.id] && !INC[d.id].dirty) { INC[d.id].items = (d.data().items || []).map((x) => ({ ...x })); INC[d.id].weeks = {}; for (const [w, L] of Object.entries(d.data().weeks || {})) INC[d.id].weeks[w] = copyItems(L); if (typeof d.data().help === "boolean") INC[d.id].help = d.data().help; INC[d.id].helpFixed = d.data().helpFixed ?? ""; INC[d.id].calc = true; } renderIncome(); renderBudget(); }, () => {});
-    if (db) db.collection("bills").onSnapshot((snap) => { bills = {}; for (const d of snap.docs) bills[d.id] = d.data(); renderBills(); renderBudget(); }, () => {});
-    if (db) db.collection("saverGoals").onSnapshot((snap) => { for (const k of Object.keys(SAVERS)) delete SAVERS[k]; for (const d of snap.docs) SAVERS[d.id] = d.data(); if (!$("bdTable").contains(document.activeElement)) renderBudget(); }, () => {});
-    if (db) db.collection("christmas").onSnapshot((snap) => { const keep = {}; for (const id of Object.keys(XM.pending || {})) if (XM.items[id]) keep[id] = XM.items[id]; XM.items = {}; for (const d of snap.docs) XM.items[d.id] = keep[d.id] || d.data(); if (!$("xBody").contains(document.activeElement)) renderXmas(); else xmasTotals(); }, () => {});
-    if (db) db.collection("budget").onSnapshot((snap) => { for (const d of snap.docs) if (!BUD.dirty[d.id]) BUD.months[d.id] = d.data().alloc || {}; if (!$("bdTable").contains(document.activeElement)) renderBudget(); }, () => {});
-    if (db) db.collection("tags").onSnapshot((snap) => { newTags = {}; for (const d of snap.docs) newTags[d.id] = d.data(); fillTagControls(); renderEverything(); }, () => {});
+    if (db) db.collection("tagChanges").onSnapshot((snap) => { tagChanges = {}; for (const d of snap.docs) tagChanges[d.id] = dd(d); fillTagControls(); renderEverything(); }, () => {});
+    if (db) db.collection("income").onSnapshot((snap) => { for (const d of snap.docs) if (INC[d.id] && !INC[d.id].dirty) { INC[d.id].items = (dd(d).items || []).map((x) => ({ ...x })); INC[d.id].weeks = {}; for (const [w, L] of Object.entries(dd(d).weeks || {})) INC[d.id].weeks[w] = copyItems(L); if (typeof dd(d).help === "boolean") INC[d.id].help = dd(d).help; INC[d.id].helpFixed = dd(d).helpFixed ?? ""; INC[d.id].calc = true; } renderIncome(); renderBudget(); }, () => {});
+    if (db) db.collection("bills").onSnapshot((snap) => { bills = {}; for (const d of snap.docs) bills[d.id] = dd(d); renderBills(); renderBudget(); }, () => {});
+    if (db) db.collection("saverGoals").onSnapshot((snap) => { for (const k of Object.keys(SAVERS)) delete SAVERS[k]; for (const d of snap.docs) SAVERS[d.id] = dd(d); if (!$("bdTable").contains(document.activeElement)) renderBudget(); }, () => {});
+    if (db) db.collection("christmas").onSnapshot((snap) => { const keep = {}; for (const id of Object.keys(XM.pending || {})) if (XM.items[id]) keep[id] = XM.items[id]; XM.items = {}; for (const d of snap.docs) XM.items[d.id] = keep[d.id] || dd(d); if (!$("xBody").contains(document.activeElement)) renderXmas(); else xmasTotals(); }, () => {});
+    if (db) db.collection("budget").onSnapshot((snap) => { for (const d of snap.docs) if (!BUD.dirty[d.id]) BUD.months[d.id] = dd(d).alloc || {}; if (!$("bdTable").contains(document.activeElement)) renderBudget(); }, () => {});
+    if (db) db.collection("tags").onSnapshot((snap) => { newTags = {}; for (const d of snap.docs) newTags[d.id] = dd(d); fillTagControls(); renderEverything(); }, () => {});
     renderEverything();
   }
   boot();
