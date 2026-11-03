@@ -2186,17 +2186,21 @@
     sel.value = PC.sel;
     const [m, key] = PC.sel.split("|"), pay = pays.find((p) => p.m === m && p.key === key), R = budgetRows(m);
     const amt = (row) => { const v = cellVal(m, row.key, key); if (v !== null) return { v, sug: false }; const sg = row.sug[key]; return sg ? { v: sg, sug: true } : null; };
-    const moves = {}, add = (dest, v, what, sug) => { const o = (moves[dest] = moves[dest] || { v: 0, what: [], sug: false }); o.v = r2(o.v + v); o.what.push(what); if (sug) o.sug = true; };
+    const moves = {}, add = (dest, v, what, sug, kind) => { const o = (moves[dest] = moves[dest] || { v: 0, what: [], sug: false, kinds: { save: 0, bill: 0, spend: 0 } }); o.v = r2(o.v + v); o.what.push(what); o.kinds[kind]++; if (sug) o.sug = true; };
     const billLines = [], otherLines = []; let total = 0, sugTotal = 0;
-    for (const r of R.saverRows) { const a = amt(r); if (!a || !a.v) continue; add(r.label, a.v, "Savings", a.sug); otherLines.push([r.label + " (saver)", a]); if (a.sug) sugTotal += a.v; else total += a.v; }
-    for (const r of R.billRows) { const a = amt(r); if (!a || !a.v) continue; add(r.saver || "No saver picked yet", a.v, r.label, a.sug); billLines.push([r, a]); if (a.sug) sugTotal += a.v; else total += a.v; }
-    for (const g of R.groups) for (const r of g.rows) { const a = amt(r); if (!a || !a.v) continue; add(STAYS, a.v, r.label, a.sug); otherLines.push([r.label, a]); if (a.sug) sugTotal += a.v; else total += a.v; }
+    for (const r of R.saverRows) { const a = amt(r); if (!a || !a.v) continue; add(r.label, a.v, "Savings", a.sug, "save"); otherLines.push([r.label + " (saver)", a]); if (a.sug) sugTotal += a.v; else total += a.v; }
+    for (const r of R.billRows) { const a = amt(r); if (!a || !a.v) continue; add(r.saver || "No saver picked yet", a.v, r.label, a.sug, "bill"); billLines.push([r, a]); if (a.sug) sugTotal += a.v; else total += a.v; }
+    for (const g of R.groups) for (const r of g.rows) { const a = amt(r); if (!a || !a.v) continue; add(STAYS, a.v, r.label, a.sug, "spend"); otherLines.push([r.label, a]); if (a.sug) sugTotal += a.v; else total += a.v; }
     total = r2(total); sugTotal = r2(sugTotal);
     $("pcLeft").textContent = money(r2(pay.net - total), 0); $("pcLeft").classList.toggle("neg", pay.net - total < 0);
     $("pcLeftSub").textContent = money(pay.net, 0) + " take-home − " + money(total, 0) + " allocated" + (sugTotal ? " (" + money(sugTotal, 0) + " more suggested)" : "");
     const amtCell = (a) => el("td", { className: "n num" + (a.sug ? " muted" : ""), textContent: money(a.v) + (a.sug ? " suggested" : "") });
     const order = Object.keys(moves).sort((a, b) => (a === STAYS ? 1 : 0) - (b === STAYS ? 1 : 0) || moves[b].v - moves[a].v);
     PC.rows = order.map((d) => [d, moves[d].v, moves[d].what.join(", ")]);
+    // A short summary of what a transfer covers, e.g. "Savings", "3 bills", "12 spending categories".
+    const covers = (d, o) => { const b = o.kinds.bill, sv = o.kinds.save, sp = o.kinds.spend, n = (k, one, many) => k + " " + (k === 1 ? one : many);
+      const parts = [sv ? "Savings" : "", b ? n(b, "bill", "bills") : "", sp ? n(sp, "spending category", "spending categories") : ""].filter(Boolean).join(" + ");
+      return d.startsWith("No saver") ? parts + ": pick a saver on Monthly planning" : parts; };
     // Actions: what's been moved into each saver since this pay (until the same person's next pay), plus anything ticked Done.
     const end = addDays(key === "kaylee" ? addMonths(m + "-15", 1) : addDays(pay.date, 7), -1), aid = m + "_" + key, done = (ACT.items[aid] && ACT.items[aid].done) || {};
     let toMove = 0, moved = 0, still = 0, open = 0;
@@ -2209,7 +2213,7 @@
       cb.disabled = !canWrite || none || auto; cb.setAttribute("aria-label", "Moved to " + d);
       cb.addEventListener("change", () => saveActionDone(aid, d, cb.checked));
       return el("tr", {}, [el("td", {}, stays ? [] : [cb]), el("td", { className: "desc" + (none ? " status-bad" : ""), textContent: d, style: "white-space:nowrap" }), amtCell({ v: o.v, sug: o.sug }),
-        el("td", { className: "n num", textContent: stays ? "" : seen ? money(seen) : ticked ? "ticked" : "" }), el("td", { className: "n num " + (stays ? "muted" : left > 0 ? "status-bad" : "status-good"), textContent: stays ? "stays put" : left > 0 ? money(left) : "✓" }), el("td", { className: "small muted", textContent: (none ? "Pick a saver for these on Monthly planning: " : "") + o.what.join(", ") })]);
+        el("td", { className: "n num", textContent: stays ? "" : seen ? money(seen) : ticked ? "ticked" : "" }), el("td", { className: "n num " + (stays ? "muted" : left > 0 ? "status-bad" : "status-good"), textContent: stays ? "stays put" : left > 0 ? money(left) : "✓" }), el("td", { className: "small muted", textContent: covers(d, o) })]);
     });
     $("pcMoves").replaceChildren(...(order.length ? rowsEl : [el("tr", {}, [el("td", { colSpan: 6, className: "empty", textContent: "Nothing allocated to this pay yet. Fill it in on Monthly planning." })])]));
     $("pcToMove").textContent = money(r2(toMove), 0); $("pcToMoveSub").textContent = pay.label + "'s pay · " + longDate(pay.date);
