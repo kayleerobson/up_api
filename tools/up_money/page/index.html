@@ -199,6 +199,13 @@
   .bud tr.grp button { font: inherit; background: none; border: 0; padding: 0; cursor: pointer; color: var(--ink); display: inline-flex; gap: 6px; align-items: center; }
   .bud tr.foot td { font-weight: 600; background: var(--cobalt-tint); }
   .bud td.ind { padding-left: 24px; }
+  .bud .billhead { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; }
+  .bud .billhead .num { font-size: 12px; color: var(--muted); }
+  .bud .billopts.one { flex-wrap: nowrap; gap: 6px; }
+  .bud .billopts.one select { max-width: 6.75rem; min-width: 0; flex: 1 1 auto; }
+  .bud .billopts.one .btn { flex: none; }
+  .bud tr.bgrp td { font-weight: 600; font-size: 12px; color: var(--muted); padding-top: 10px; }
+  .bud tr.bgrp.warn td { color: var(--coral-deep); }
   .bud .billopts label { display: inline-flex; gap: 6px; align-items: center; }
   .bud .billopts { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; margin-top: 4px; font-size: 12px; color: var(--muted); }
   .bud .billopts select { font: inherit; font-size: 12px; line-height: 16px; height: 28px; padding: 2px 4px; max-width: 12rem; border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--raised); color: var(--ink); }
@@ -1605,7 +1612,8 @@
       const due = billMonthAmt(b, m), plan = billPlan(b, m), sug = plan.per;
       const how = plan.detail.every((x) => x.weeks === 1 && !x.late) && plan.detail.length ? "set aside the Wednesday before each payment"
         : plan.detail.slice(0, 2).map((x) => x.late ? "all of " + dfmt(x.due) + "'s payment on the next pay (due before it)" : money(x.each) + "/week × " + x.weeks + " for " + dfmt(x.due)).join("; ") + (plan.detail.length > 2 ? "; …" : "");
-      return { key: "bill_" + b.id, kind: "bill", bill: b, label: b.name, saver: isSaver(b.account) ? b.account : "", sub: (b.from ? b.from + " · " : "") + money(Number(b.amount)) + " " + freqLabel(b).toLowerCase() + (how ? " · " + how : ""), last: null, sug };
+      const next = occurrences(b, m + "-01" > todayISO() ? m + "-01" : todayISO(), "2100-12-31")[0] || "";
+      return { key: "bill_" + b.id, kind: "bill", bill: b, label: b.name, saver: isSaver(b.account) ? b.account : "", next, head: money(Number(b.amount)) + " " + freqLabel(b).toLowerCase() + (next ? " · due " + dfmt(next) : ""), sub: [b.from, how].filter(Boolean).join(" · "), last: null, sug };
     });
     const mapped = {}; for (const r of billRows) if (r.bill.category) mapped[r.bill.category] = r2((mapped[r.bill.category] || 0) + billMonthAmt(r.bill, m));
     const groups = cats.map((p) => ({ name: p.name, rows: p.children.map((c) => { const lm = last["cat_" + c.id] || 0, sugAmt = Math.max(0, Math.round(lm - (mapped[c.id] || 0))); return { key: "cat_" + c.id, kind: "cat", label: c.name, sub: mapped[c.id] ? "Includes bills mapped here" : "", last: lm, sug: spread(sugAmt, jaiPays) }; }) }));
@@ -1650,7 +1658,9 @@
         const al = el("button", { type: "button", className: "btn ghost csv", textContent: "Allocate" }); al.disabled = !canWrite || !Object.keys(row.sug).length;
         al.setAttribute("aria-label", "Allocate " + row.label + " across Jai's pays this month");
         al.addEventListener("click", () => { const a = allocOf(m); a[row.key] = {}; for (const [pk, v] of Object.entries(row.sug)) if (v > 0) a[row.key][pk] = v; renderBudget(); queueBudgetSave(m); $("bdMsg").textContent = "Allocated " + row.label + ". Saving…"; });
-        first.append(el("div", { className: "billopts" }, [el("label", {}, ["Paid from ", sv]), el("label", {}, ["Category ", sel]), al]));
+        sv.title = "Saver this bill is paid from"; sel.title = "Up category this bill maps to"; sel.options[0].textContent = "No category";
+        first.replaceChildren(el("div", { className: "billhead" }, [el("strong", { textContent: row.label }), el("span", { className: "num", textContent: row.head })]),
+          row.sub ? el("span", { className: "sub", textContent: row.sub }) : "", el("div", { className: "billopts one" }, [sv, sel, al]));
       }
       return el("tr", {}, [first, row.last === null ? el("td") : lastLink(m, row.last, row.label, "Spent last month", [row.key]), ...cellInput(row), tot]); };
     const section = (key, title, rows) => { const cells = R.pays.map((p) => { const td = el("td", { className: "n num" }); (bdRefs.secTot[key] = bdRefs.secTot[key] || {})[p.key] = td; return td; }); const tot = el("td", { className: "n num" }); bdRefs.secTot[key]._ = tot; const lastTot = rows.reduce((s, r) => s + (r.last || 0), 0);
@@ -1660,7 +1670,14 @@
     for (const r of R.saverRows) body.append(line(r));
     section("bills", "Bills", R.billRows);
     if (!R.billRows.length) body.append(el("tr", {}, [el("td", { colSpan: R.pays.length + 3, className: "small muted", textContent: "No bills yet. Add them on the Bills tab." })]));
-    for (const r of R.billRows) body.append(line(r));
+    // Bills grouped under the saver that pays them (bills still needing a saver first), each group in due-date order.
+    const savers = balances.filter((b) => b.kind === "Saver").map((b) => b.account), byNext = (a, b) => (a.next || "9999").localeCompare(b.next || "9999") || a.label.localeCompare(b.label);
+    for (const sv of ["", ...savers]) {
+      const rows = R.billRows.filter((r) => r.saver === sv).sort(byNext); if (!rows.length) continue;
+      const tot = r2(rows.reduce((s, r) => s + Object.values(r.sug).reduce((a, v) => a + v, 0), 0));
+      body.append(el("tr", { className: "bgrp" + (sv ? "" : " warn") }, [el("td", { className: "stick", colSpan: 2, textContent: sv ? "Paid from " + sv + " · " + rows.length + " bill" + (rows.length > 1 ? "s" : "") + " · " + money(tot) + " to save this month" : "Needs a saver · " + rows.length + " bill" + (rows.length > 1 ? "s" : "") }), el("td", { colSpan: R.pays.length + 1 })]));
+      for (const r of rows) body.append(line(r));
+    }
     section("spend", "Spending", R.groups.flatMap((g) => g.rows));
     for (const g of R.groups) {
       const open = BUD.open[g.name] !== false, btn = el("button", { type: "button", textContent: (open ? "▾ " : "▸ ") + g.name }); btn.setAttribute("aria-expanded", String(open));
